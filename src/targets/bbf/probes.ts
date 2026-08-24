@@ -159,6 +159,61 @@ export const probes: ProbeSounding[] = [
   },
   {
     kind: 'probe',
+    id: 'paging-does-not-lose-or-repeat',
+    title: 'walking the pages sees every document exactly once',
+    because:
+      'A list longer than one page is read by paging through it. If the pages overlap, a document ' +
+      'is worked twice; if they leave a gap, one is never seen at all — and either way every page ' +
+      'answers 200 and looks complete. This only bites once there is enough data to page, which ' +
+      'is what the seasoning waves are for.',
+    async take(ctx: ProbeContext) {
+      const size = 5
+      const head = await call(ctx.surveyor, 'GET', `/api/invoices?limit=${size}&page=1`)
+      if (head.status !== 200) return [{ problem: 'the invoice list failed', status: head.status }]
+      const total = Number(head.body?.total ?? 0)
+      if (total <= size) return []
+
+      const seen = new Map<string, number>()
+      const pages = Math.min(Math.ceil(total / size), 8)
+      // Kept so a violation carries the pages themselves.
+      //
+      // The first version reported only counts — "expected 40, saw 38" — and
+      // when it tripped there was nothing to diagnose and no way to tell an
+      // unstable sort from a mistake in the probe. A finding that cannot be
+      // read is barely better than no finding.
+      const walk: { page: number; docNos: string[] }[] = []
+      for (let page = 1; page <= pages; page++) {
+        const out = await call(ctx.surveyor, 'GET', `/api/invoices?limit=${size}&page=${page}`)
+        const docs = rows(out.body, 'docs')
+        walk.push({ page, docNos: docs.map((d: any) => d.docNo ?? d.id) })
+        for (const d of docs) seen.set(d.id, (seen.get(d.id) ?? 0) + 1)
+      }
+
+      const repeated = [...seen.entries()].filter(([, n]) => n > 1)
+      const expected = Math.min(total, pages * size)
+      if (!repeated.length && seen.size >= expected) return []
+
+      const dupes = new Set(
+        walk.flatMap((p) => p.docNos).filter((n, i, a) => a.indexOf(n) !== i),
+      )
+      return [
+        {
+          problem: repeated.length ? 'a document appeared on more than one page' : 'the pages do not add up',
+          total,
+          pageSize: size,
+          pagesWalked: pages,
+          expectedDistinct: expected,
+          distinctSeen: seen.size,
+          onTwoPages: [...dupes],
+          // The order the list came back in, so an unstable sort is visible
+          // rather than inferred.
+          walk: walk.map((p) => `p${p.page}: ${p.docNos.join(' ')}`),
+        },
+      ]
+    },
+  },
+  {
+    kind: 'probe',
     id: 'snapshots-are-frozen',
     title: 'a document that has gone out never has its details rewritten',
     because:

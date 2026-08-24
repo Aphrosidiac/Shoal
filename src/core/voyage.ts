@@ -32,6 +32,8 @@ export interface VoyageOpts {
   waves: number
   collideRate: number
   soundEvery: number
+  /** Waves spent building state before the voyage proper begins. */
+  seasonWaves?: number
   /** Share of collision waves given to a cross-action group, when any exist. */
   groupRate?: number
   onWave?: (wave: number, log: LogEntry[]) => void
@@ -69,6 +71,7 @@ function planWave(
   collide: boolean,
   groups: CollisionGroup[],
   groupRate: number,
+  extraBias?: Record<string, number>,
 ): Plan[] {
   if (collide && groups.length && rng() < groupRate) {
     // A cross-action contention. Each item names its own action, so the actors
@@ -115,9 +118,10 @@ function planWave(
   const plans: Plan[] = []
   for (const session of sessions) {
     const persona = personas.get(session.persona)
-    const usable = actions.filter((a) => a.roles.includes(session.role) && (persona?.bias[a.name] ?? 1) > 0)
+    const bias = (a: Action) => (persona?.bias[a.name] ?? 1) * (extraBias?.[a.name] ?? 1)
+    const usable = actions.filter((a) => a.roles.includes(session.role) && bias(a) > 0)
     for (let attempt = 0; attempt < 8; attempt++) {
-      const action = weighted(rng, usable, (a) => a.weight * (persona?.bias[a.name] ?? 1))
+      const action = weighted(rng, usable, (a) => a.weight * bias(a))
       if (!action) break
       const args = action.pick(world, rng)
       if (args === null) continue
@@ -138,15 +142,25 @@ export async function runVoyage(
   ctx: ProbeContext,
   opts: VoyageOpts,
   groups: CollisionGroup[] = [],
+  seasonBias: Record<string, number> = {},
 ): Promise<VoyageResult> {
   const personas = new Map(personaList.map((p) => [p.name, p]))
   const log: LogEntry[] = []
   const violations: Violation[] = []
   const seen = new Set<string>()
 
-  for (let wave = 0; wave < opts.waves; wave++) {
-    const collide = rng() < opts.collideRate
-    const plans = planWave(rng, sessions, personas, actions, world, collide, groups, opts.groupRate ?? 0.4)
+  const season = opts.seasonWaves ?? 0
+  for (let wave = 0; wave < season + opts.waves; wave++) {
+    const seasoning = wave < season
+    // No collisions and no sweeps while seasoning. Contention during the build
+    // up would leave damage that the voyage proper then reports as its own
+    // finding, with the actions that caused it buried in waves nobody is
+    // shrinking.
+    const collide = !seasoning && rng() < opts.collideRate
+    const plans = planWave(
+      rng, sessions, personas, actions, world, collide, groups, opts.groupRate ?? 0.4,
+      seasoning ? seasonBias : undefined,
+    )
 
     const entries = await Promise.all(
       plans.map(async (p): Promise<LogEntry> => {
@@ -154,16 +168,16 @@ export async function runVoyage(
         try {
           const out = await p.action.run(p.session, p.args, world)
           const note = out.status >= 400 ? String(out.body?.error ?? '').slice(0, 120) : undefined
-          return { ...base, status: out.status, ms: out.ms, produced: extractId(out.body), note }
+          return { ...base, status: out.status, ms: out.ms, produced: extractId(out.body), note, ...(seasoning ? { season: true } : {}) }
         } catch (e: any) {
-          return { ...base, status: 0, ms: 0, error: String(e?.message ?? e).slice(0, 300) }
+          return { ...base, status: 0, ms: 0, error: String(e?.message ?? e).slice(0, 300), ...(seasoning ? { season: true } : {}) }
         }
       }),
     )
     log.push(...entries)
     opts.onWave?.(wave, entries)
 
-    if (wave % opts.soundEvery === opts.soundEvery - 1 || wave === opts.waves - 1) {
+    if (!seasoning && ((wave - season) % opts.soundEvery === opts.soundEvery - 1 || wave === season + opts.waves - 1)) {
       // One violation per sounding per voyage. A broken invariant stays broken
       // for every later sweep, and reporting it forty times buries everything
       // else.
@@ -188,5 +202,5 @@ export async function runVoyage(
     .filter(([, a]) => a.n >= 5 && a.ok === 0)
     .map(([action, a]) => ({ action, attempts: a.n }))
 
-  return { log, violations, serverFaults, waves: opts.waves, starved }
+  return { log, violations, serverFaults, waves: season + opts.waves, starved }
 }

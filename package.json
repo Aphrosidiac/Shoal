@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "pg": "^8.13.1"
+    "pg": "^8.13.1",
+    "playwright-core": "^1.62.1"
   },
   "devDependencies": {
     "@types/node": "^22.15.18",

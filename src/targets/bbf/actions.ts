@@ -6,7 +6,7 @@
  * BBF's own suite writes out by hand — the difference being that a flag can be
  * put on an action nobody suspects, which is where the next one will be.
  */
-import type { Action, DocRef, World } from '../../core/types.js'
+import type { Action, DocRef, Rng, World } from '../../core/types.js'
 import { call } from '../../core/driver.js'
 import { int, pick } from '../../core/rng.js'
 
@@ -15,6 +15,20 @@ const LOGI_ROLES = ['LOGISTICS', 'MANAGER']
 const ALL = ['SALES', 'ADMIN', 'LOGISTICS', 'MANAGER']
 
 const money = (n: number) => Math.round(n * 100) / 100
+
+/**
+ * A third of documents are dated into the past.
+ *
+ * Documents get entered late, and a system that has been running has months of
+ * them. It also puts real traffic through more than one numbering prefix,
+ * which is the only way `sequence-covers-issued-numbers` says anything.
+ */
+function backdated(rng: Rng): { docDate?: string } {
+  if (rng() > 0.34) return {}
+  const days = int(rng, 20, 200)
+  const d = new Date(Date.now() - days * 86_400_000)
+  return { docDate: d.toISOString().slice(0, 10) }
+}
 
 /** Records a document into the world the moment the API confirms it. */
 function remember(list: DocRef[], body: any) {
@@ -75,6 +89,7 @@ export const actions: Action[] = [
       if (!customerId) return null
       const lines = int(rng, 1, 3)
       return {
+        ...backdated(rng),
         customerId,
         items: Array.from({ length: lines }, (_, i) => ({
           description: `Shoal line ${i + 1}`,
@@ -97,6 +112,7 @@ export const actions: Action[] = [
       const customerId = pick(rng, w.customers)
       if (!customerId) return null
       return {
+        ...backdated(rng),
         customerId,
         items: [{ description: 'Shoal direct sale', qty: int(rng, 1, 3), unitPrice: money(int(rng, 200, 3000)) }],
       }
@@ -339,5 +355,81 @@ export const actions: Action[] = [
       return slotId ? { slotId } : null
     },
     run: (s, a) => call(s, 'PUT', `/api/logistics/slots/${a.slotId}`, { capacity: 1 }),
+  },
+]
+
+/**
+ * Boundary actions: the edges where BBF meets something it does not control.
+ *
+ * Several of the production incidents across these systems came from here
+ * rather than from the core — a callback that never fired, a channel that was
+ * dead while the process manager showed green. The swarm cannot make Meta
+ * misbehave, so it does the misbehaving itself: the same inbound message
+ * delivered twice, and a document pushed to accounting by two people at once.
+ */
+export const boundaryActions: Action[] = [
+  {
+    name: 'deliver-webhook',
+    // The webhook is unauthenticated by design; any actor can post it. Signed
+    // requests are not required outside production, which is what makes this
+    // reachable at all.
+    roles: ALL,
+    weight: 3,
+    collidable: true,
+    pick: (w, rng) => {
+      // A THIRD of deliveries are re-deliveries. Meta retries, and a retry of
+      // something already processed must be a no-op, not a second message and
+      // not a 500.
+      const replay = rng() < 0.33 ? pick(rng, w.waMessageIds) : null
+      const from = `601${int(rng, 10000000, 99999999)}`
+      return {
+        waMessageId: replay ?? `wamid.SHOAL${int(rng, 100000, 999999)}${int(rng, 100000, 999999)}`,
+        from: replay ? (w.waMessageIds.length ? from : from) : from,
+        text: `Shoal enquiry ${int(rng, 1, 9999)}`,
+        replay: Boolean(replay),
+      }
+    },
+    async run(s, a, w) {
+      const out = await call(s, 'POST', '/api/whatsapp/webhook', {
+        object: 'whatsapp_business_account',
+        entry: [
+          {
+            id: 'shoal',
+            changes: [
+              {
+                field: 'messages',
+                value: {
+                  contacts: [{ wa_id: a.from, profile: { name: `Shoal ${a.from.slice(-4)}` } }],
+                  messages: [
+                    {
+                      id: a.waMessageId,
+                      from: a.from,
+                      timestamp: String(Math.floor(Date.parse('2026-08-24T00:00:00Z') / 1000)),
+                      type: 'text',
+                      text: { body: a.text },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+      })
+      if (out.status < 300 && !a.replay) w.waMessageIds.push(a.waMessageId)
+      return out
+    },
+  },
+  {
+    name: 'push-to-autocount',
+    roles: ['ADMIN', 'MANAGER'],
+    weight: 2,
+    // Two people pressing push on the same document. The external system has
+    // no idea the other request exists.
+    collidable: true,
+    pick: (w, rng) => {
+      const doc = pick(rng, w.invoices.filter((d) => d.status !== 'DRAFT'))
+      return doc ? { id: doc.id } : null
+    },
+    run: (s, a) => call(s, 'POST', `/api/autocount/push/${a.id}`),
   },
 ]

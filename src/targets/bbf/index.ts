@@ -11,8 +11,9 @@ import { join } from 'node:path'
 import type { CollisionGroup, Persona, Session, Target, World } from '../../core/types.js'
 import { call } from '../../core/driver.js'
 import { pick } from '../../core/rng.js'
-import { actions } from './actions.js'
+import { actions, boundaryActions } from './actions.js'
 import { soundings } from './soundings.js'
+import { uiProbe } from './probes-ui.js'
 
 const PASSWORD = '<moved to shoal.local.json>'
 
@@ -102,6 +103,7 @@ export async function survey(s: Session): Promise<World> {
     quotations: [],
     invoices: [],
     deliveries: [],
+    waMessageIds: [],
   }
 }
 
@@ -141,6 +143,32 @@ const collisionGroups: CollisionGroup[] = [
   },
 ]
 
+/**
+ * Weights for the seasoning waves.
+ *
+ * Build, do not probe. Reads are pointless when nothing is watching, and
+ * anything that voids, cancels or closes would spend the phase destroying what
+ * it is meant to be accumulating.
+ */
+const seasonBias: Record<string, number> = {
+  'create-customer': 3,
+  'create-quotation': 3,
+  'create-invoice': 3,
+  'create-delivery': 3,
+  'record-payment': 2,
+  'advance-doc-status': 2,
+  'schedule-delivery': 2,
+  'deliver-webhook': 2,
+  'convert-quotation': 1,
+  'edit-doc-lines': 0.5,
+  'advance-delivery-status': 0.5,
+  'add-blackout': 0,
+  'push-to-autocount': 0,
+  'read-availability': 0,
+  'read-dashboard': 0,
+  'read-invoices': 0,
+}
+
 export const bbf: Target = {
   name: 'bbf',
   root: join(homedir(), 'Desktop/dev/BBFSystem/backend'),
@@ -148,10 +176,13 @@ export const bbf: Target = {
   workDb: 'bbfsystem_shoal',
   templateDb: 'bbfsystem_shoal_tpl',
   port: 3915,
+  web: { root: join(homedir(), 'Desktop/dev/BBFSystem/frontend'), port: 5915 },
   personas,
-  actions,
+  actions: [...actions, ...boundaryActions],
   soundings,
   collisionGroups,
+  seasonBias,
+  uiProbe: ({ url }) => uiProbe({ url, email: 'admin@<target domain>', password: PASSWORD, enabled: true }),
   survey,
 }
 

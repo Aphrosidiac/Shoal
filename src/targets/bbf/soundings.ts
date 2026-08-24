@@ -160,6 +160,35 @@ const state: SqlSounding[] = [
        GROUP BY i.id, i.description, i.qty
       HAVING SUM(di.qty) > i.qty + 0.005`,
   },
+  {
+    id: 'autocount-state-is-coherent',
+    title: 'what a document says about accounting is true of it',
+    because:
+      'AutoCount is the book of record. A document marked SYNCED with no number in it cannot be ' +
+      'found there, and one marked NOT_SYNCED that carries a number has been pushed and forgotten ' +
+      '— either way somebody reconciles by hand and the answer they get is wrong.',
+    sql: `
+      SELECT id, doc_no, autocount_sync_status, autocount_doc_no, autocount_error
+        FROM sales_docs
+       WHERE (autocount_sync_status = 'SYNCED' AND autocount_doc_no IS NULL)
+          OR (autocount_sync_status = 'NOT_SYNCED' AND autocount_doc_no IS NOT NULL)
+          OR (autocount_sync_status = 'FAILED' AND autocount_error IS NULL)`,
+  },
+  {
+    id: 'one-live-conversation-per-contact',
+    title: 'a customer has one live thread, not several',
+    because:
+      'A conversation is the thread with one person. Two live ones for the same number show the ' +
+      'customer twice in the inbox and send the reply down whichever the operator happened to ' +
+      'open, so the other goes unanswered. Two messages arriving together from someone new is ' +
+      'the ordinary way that happens.',
+    sql: `
+      SELECT c.wa_id, COUNT(*) AS live_threads
+        FROM wa_conversations v JOIN wa_contacts c ON c.id = v.contact_id
+       WHERE v.status IN ('BOT', 'HUMAN')
+       GROUP BY c.wa_id
+      HAVING COUNT(*) > 1`,
+  },
 ]
 
 /** State first, then the probes: SQL is cheap and probes cost round trips. */

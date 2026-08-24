@@ -36,15 +36,28 @@ reset db from template  →  boot target  →  log in every persona  →  survey
                                                                       │
         ┌─────────────────────────────────────────────────────────────┘
         ▼
+   seasoning: N waves of building only. No collisions, no sweeps.
+        │      Documents backdated across months, lists grown past one page.
+        ▼
    wave: K actors dispatch one action each, simultaneously
         │                                     (with probability `collide`,
-        │                                      all K hit the SAME row)
+        │                                      they contend for one thing)
         ▼
-   sweep: every sounding runs as SQL. Rows returned are violations.
+   sweep: SQL soundings on the state, probe soundings on the answers
+        │
+        ▼
+   browser: once, at the end, if asked — every page loaded as a real user
         │
         ▼
    chart: violations + server faults + the log, shrunk to a minimal repro
 ```
+
+**Seasoning.** A voyage that starts on the seed and runs eighty waves only ever
+sees a system with a few dozen rows in it, and one of the five things an audit
+is blind to is that real defects live in accumulated data. Seasoning waves run
+first, weighted to build rather than to probe, with a third of documents dated
+into the past. Two of the four findings so far were unreachable without it: one
+needs more than one page of invoices, and it needs them to share dates.
 
 **Two kinds of sounding.** A SQL sounding reads the state the system ended in.
 A PROBE sounding asks the system questions and checks the answers against each
@@ -123,8 +136,31 @@ npm run shoal -- replay charts/bbf-4471.json --attempts 5
 npm run shoal -- soundings bbf
 ```
 
-Flags: `--waves` `--collide` `--sound-every` `--attempts` `--verbose`
-`--rebuild-template` (re-clone after reseeding the target).
+```bash
+npm run shoal -- run bbf --seed 6001 --waves 70 --season 30 --ui
+```
+
+Flags: `--waves` `--season` `--collide` `--sound-every` `--attempts` `--verbose`
+`--rebuild-template` (re-clone after reseeding the target) `--ui` (drive the
+frontend in a real browser at the end) `--rebuild-ui` (force a frontend build).
+
+### The browser
+
+`--ui` builds the target's frontend, serves the bundle with `/api` pointed at
+the voyage's own backend, and drives it with the installed Chrome.
+
+Not the target's `vite dev`: its config hardcodes a proxy to the app's normal
+development port, so a UI driven through it would be talking to a different
+database than the one being swept. Rewriting that config means writing into the
+target's repository, which Shoal has no business doing. Serving the built
+bundle avoids all of it and has the side benefit of testing what actually
+ships.
+
+Two things are checked and nothing else. Nothing threw — no console error, no
+unhandled rejection, no 5xx behind the page. And where the database holds rows,
+the screen shows some. Not how many and not in what order: a UI probe that
+asserts on layout becomes a screenshot test that fails on every design change
+and is switched off within a month.
 
 ## The database
 
@@ -210,26 +246,52 @@ Every one of those looked exactly like a passing test.
 
 ## Findings so far
 
-Both are the same root cause, and stating it that way is worth more than either
-bug: **three routes write the `sales_docs` row and only one takes the lock.**
-`POST /api/invoices/:id/payments` locks. `PUT /api/sales-docs/:id` and
+Four, none of them previously known, all on current `main`. Two needed
+concurrency, one needed aged data, one needed both.
+
+**`total-equals-lines` and `status-follows-money` are the same hole**, and
+saying it that way is worth more than either bug: **three routes write the
+`sales_docs` row and only one takes the lock.**
+`POST /api/invoices/:id/payments` locks; `PUT /api/sales-docs/:id` and
 `PUT /api/sales-docs/:id/status` do not.
 
-**`total-equals-lines`.** The edit route replaces a draft's lines with
-`deleteMany` then `create` inside a transaction, unlocked. Under READ COMMITTED
-each concurrent edit deletes only the rows visible to it and inserts its own, so
-every edit's rows survive while `total` comes from whichever committed last.
-Four simultaneous edits of one draft quotation left **12 line rows summing to
-RM 72,200 on a document whose total said RM 18,050**, all four returning 200
-with nothing logged. Reproduces 3/3; shrinks from 253 actions to 9 across 2
-waves.
+- The edit route replaces a draft's lines with `deleteMany` then `create`,
+  unlocked. Under READ COMMITTED each concurrent edit deletes only the rows
+  visible to it and inserts its own, so every edit's rows survive while `total`
+  comes from whichever committed last. Four simultaneous edits of one draft left
+  **12 line rows summing to RM 72,200 on a document whose total said
+  RM 18,050**, all four returning 200. Reproduces 3/3; shrinks from 253 actions
+  to 9 across 2 waves.
+- The status route writes `status` directly while the payment route derives it
+  from `paid_amt`. In one wave a payment of RM 1,637.25 returned 201, deriving
+  PARTIAL, and a status write of SENT returned 200. Final state: total RM 6,549,
+  paid RM 1,637.25, **status SENT** — an invoice with money against it sitting
+  in the chase list. It self-heals only if another payment happens to re-derive
+  the status later.
 
-**`status-follows-money`.** The status route writes `status` directly while the
-payment route derives it from `paid_amt`. In one wave a payment of RM 1,637.25
-returned 201, deriving PARTIAL, and a status write of SENT returned 200. Final
-state: total RM 6,549, paid RM 1,637.25, **status SENT** — an invoice with money
-against it sitting in the chase list. It self-heals only if another payment
-happens to re-derive the status later; without one it stays wrong for good.
+**`paging-does-not-lose-or-repeat`.** Every paged list orders by a single
+non-unique column and pages with OFFSET, so Postgres is free to order tied rows
+differently per query. Walking six pages of thirty invoices:
+
+```
+p1: 2948 2947 2946 2945 2944
+p2: 2944 2942 2941 2940 2939     <- 2944 repeated, 2943 on no page at all
+p3: 2938 2937 2935 2934 2933     <- 2936 skipped here...
+p5: 001  2936 ...                <- ...and surfaces here, out of order
+```
+
+Thirty invoices exist; twenty-nine were ever seen. An invoice on no page is
+never chased and never collected, and every page answers 200. Reproduces 3/3
+seeds — but only with seasoning, because it needs more than one page and enough
+tied dates to matter.
+
+**`one-live-conversation-per-contact`.** Eight concurrent inbound webhooks from
+one number all returned 200 and left **four live threads for one contact**. The
+customer shows up four times in the inbox and a reply goes down whichever thread
+the operator opens. `wa_messages.wa_message_id` is unique so a duplicated
+message is caught; the contact-and-conversation find-or-create that runs before
+it is not. Reproduces 3/3. Realistic without a swarm: Meta retries webhooks, and
+a customer sending two messages quickly produces two concurrent POSTs.
 
 ## Adding a target
 
@@ -247,11 +309,30 @@ Personas are **operational**, not demographic. Role, competence, intent,
 environment and tenure change which code runs. "Ahmad, 34, likes coffee" does
 not.
 
+## The five blind spots, and where each stands
+
+The whole design is aimed at what reading code cannot see. Stated plainly so
+the gaps are as visible as the coverage:
+
+| An audit is blind to | Shoal |
+|---|---|
+| It reasons, it never runs | every voyage runs the real system |
+| Single-threaded — never two things at once | waves, three shapes of forced collision |
+| Fresh state — never accumulated data | seasoning, backdating across months |
+| Silent failure — a 200 and a blank row | probe soundings, and the browser |
+| **It shares blind spots with the code** | **not solved, and made worse if you let it** |
+
+The fifth is the one to keep watching. Every sounding's `because` is written
+from the business, and the moment one is written from the implementation
+instead, it will agree with the bug it was supposed to catch.
+
 ## Not yet
 
-- Fault injection at the boundary: webhooks delivered twice, never, or out of
-  order. This is where several production incidents here actually came from.
-- Aged state. Every voyage starts on the seed and runs eighty waves; nothing
-  yet simulates a system that has been running for a year.
-- A UI driver. Everything above is the API surface; the silent-blank-row class
-  needs a browser.
+- **Fault injection beyond duplication.** A webhook can be delivered twice; it
+  cannot yet arrive out of order, arrive six weeks late, or not arrive at all.
+  A callback that never fires is a live open issue on another system here, and
+  Shoal could not currently find it.
+- **The browser only looks.** It logs in and reads. It does not fill a form,
+  submit it, or race another actor from the UI.
+- **One target.** Everything in `src/core` is target-agnostic; nothing has
+  proved that by being pointed at a second system.

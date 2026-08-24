@@ -19,6 +19,7 @@ import { runVoyage } from './core/voyage.js'
 import type { Action, LogEntry, ProbeContext, Session, Target, World, Violation } from './core/types.js'
 import { sweepAll } from './core/sound.js'
 import { bbf, password } from './targets/bbf/index.js'
+import { buildFrontend, serveDist } from './core/webserve.js'
 import { replayLog } from './triage/replay.js'
 import { minimise } from './triage/minimise.js'
 import { writeChart, type Chart } from './triage/chart.js'
@@ -150,15 +151,29 @@ async function sweep(t: Target, ctx: ProbeContext, atWave: number): Promise<Viol
   return sweepAll(t.soundings, ctx, atWave)
 }
 
+/**
+ * Boots the frontend for a browser probe: builds it if needed, then serves the
+ * bundle with /api pointed at this voyage's backend.
+ */
+async function serveUi(t: Target): Promise<{ url: string; stop: () => Promise<void> }> {
+  if (!t.web) throw new Error(`${t.name} declares no frontend to drive`)
+  process.stdout.write('  building the frontend …\r')
+  const dist = await buildFrontend(t.web.root, has('rebuild-ui'))
+  const served = await serveDist(dist, t.web.port, t.port)
+  process.stdout.write('                           \r')
+  return { url: `http://127.0.0.1:${t.web.port}`, stop: served.stop }
+}
+
 async function cmdRun() {
   const t = target()
   const seed = num('seed', 4471)
   const waves = num('waves', 60)
   const collide = Number(flag('collide', '0.4'))
   const soundEvery = num('sound-every', 5)
+  const seasonWaves = num('season', 25)
   const quiet = !has('verbose')
 
-  console.log(`\n  shoal · ${t.name} · seed ${seed} · ${waves} waves\n`)
+  console.log(`\n  shoal · ${t.name} · seed ${seed} · ${seasonWaves} seasoning + ${waves} waves\n`)
   const r = await rig(t, quiet)
   try {
     const world = await t.survey(r.surveyor)
@@ -182,23 +197,44 @@ async function cmdRun() {
         waves,
         collideRate: collide,
         soundEvery,
+        seasonWaves,
         onWave: (w) => {
-          if (w % 10 === 9) process.stdout.write(`  wave ${w + 1}/${waves}\r`)
+          const total = seasonWaves + waves
+          if (w % 10 === 9) {
+            const label = w < seasonWaves ? 'seasoning' : 'wave'
+            process.stdout.write(`  ${label} ${w + 1}/${total}   \r`)
+          }
         },
       },
       t.collisionGroups ?? [],
+      t.seasonBias ?? {},
     )
     process.stdout.write('                          \r')
 
     const chart: Chart = {
       target: t.name,
       seed,
-      waves,
+      waves: seasonWaves + waves,
       actors: r.sessions.length,
       violations: result.violations,
       serverFaults: result.serverFaults,
       starved: result.starved,
       log: result.log,
+    }
+
+    // The browser probe runs ONCE, after the voyage, rather than on every
+    // sweep. Launching Chrome forty times to look at the same eight pages is
+    // most of a voyage's wall clock and tells you nothing the last look does
+    // not.
+    if (has('ui') && t.uiProbe) {
+      const ui = await serveUi(t)
+      try {
+        const found = await sweepAll([t.uiProbe({ url: ui.url })], context(r, world), seasonWaves + waves)
+        chart.violations.push(...found)
+        if (!found.length) console.log('  browser: 8 pages loaded clean')
+      } finally {
+        await ui.stop()
+      }
     }
 
     report(chart)

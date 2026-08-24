@@ -61,6 +61,8 @@ export interface World {
   quotations: DocRef[]
   invoices: DocRef[]
   deliveries: string[]
+  /** Inbound WhatsApp ids already delivered, so one can be delivered twice. */
+  waMessageIds: string[]
 }
 
 export interface Outcome {
@@ -210,6 +212,8 @@ export interface LogEntry {
    * re-runnable at all.
    */
   produced?: string
+  /** True for a wave spent building up state rather than looking for anything. */
+  season?: true
 }
 
 /**
@@ -235,10 +239,24 @@ export interface Target {
   workDb: string
   templateDb: string
   port: number
+  /** The frontend, when the target has one worth driving. */
+  web?: { root: string; port: number }
   personas: Persona[]
   actions: Action[]
   soundings: Sounding[]
   collisionGroups?: CollisionGroup[]
+  /**
+   * Action weights during seasoning.
+   *
+   * A voyage that starts on the seed and runs eighty waves only ever sees a
+   * system with a few dozen rows in it, and the third blind spot an audit has
+   * is precisely that real defects live in accumulated data. Seasoning waves
+   * run first, with no collisions and no sweeps, weighted to build depth
+   * rather than to look for anything.
+   */
+  seasonBias?: Record<string, number>
+  /** Built on demand, so the browser is only launched when asked for. */
+  uiProbe?(opts: { url: string }): ProbeSounding
   /** Fresh world, read back off the API after a reset. */
   survey(s: Session): Promise<World>
 }
