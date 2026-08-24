@@ -8,9 +8,9 @@
  *   shoal replay  charts/bbf-4471.json --attempts 5
  *   shoal soundings bbf
  */
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { mkdirSync, readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { bootTarget, readDotEnv } from './core/boot.js'
 import { Soundings, dbUrl, ensureTemplate, resetWorkDb } from './core/db.js'
 import { login } from './core/driver.js'
@@ -18,13 +18,13 @@ import { mulberry32 } from './core/rng.js'
 import { runVoyage } from './core/voyage.js'
 import type { Action, LogEntry, ProbeContext, Session, Target, World, Violation } from './core/types.js'
 import { sweepAll } from './core/sound.js'
-import { bbf, password } from './targets/bbf/index.js'
 import { buildFrontend, serveDist } from './core/webserve.js'
+import { configFor, required } from './core/config.js'
+import type { TargetFactory } from './target/define.js'
 import { replayLog } from './triage/replay.js'
 import { minimise } from './triage/minimise.js'
 import { writeChart, type Chart } from './triage/chart.js'
 
-const TARGETS: Record<string, Target> = { bbf }
 const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..')
 const CHARTS = join(ROOT, 'charts')
 
@@ -43,14 +43,41 @@ const num = (name: string, fallback: number) => {
 }
 const has = (name: string) => argv.includes(`--${name}`)
 
-function target(): Target {
-  const t = TARGETS[positional[0] ?? '']
-  if (!t) {
-    console.error(`unknown target "${positional[0]}". known: ${Object.keys(TARGETS).join(', ')}`)
-    process.exit(2)
+/**
+ * Loads a target by name from `targets/<name>/index.ts`, or from `--target
+ * <path>`.
+ *
+ * Imported at runtime rather than compiled in. A target describes one system —
+ * its routes, its roles, the rules its business runs on — and belongs with that
+ * system, not in this repository. Nothing in `src/` imports a target, so
+ * adding one means writing a directory and touching none of the engine.
+ */
+async function loadTarget(name?: string): Promise<Target> {
+  const explicit = flag('target')
+  const path = explicit
+    ? resolve(explicit)
+    : join(ROOT, 'targets', name ?? '', 'index.ts')
+  let mod: { default?: Target | TargetFactory }
+  try {
+    mod = await import(pathToFileURL(path).href)
+  } catch (e: any) {
+    throw new Error(
+      `could not load target "${name ?? explicit}" from ${path}\n  ${String(e?.message ?? e).split('\n')[0]}`,
+    )
   }
-  return t
+  const exported = mod.default
+  if (!exported) throw new Error(`${path} has no default export — see src/target/define.ts`)
+  const built = typeof exported === 'function' ? await exported(configFor(name ?? 'default')) : exported
+  if (!built?.name || !built.actions?.length) throw new Error(`${path} did not export a usable target`)
+  return built
 }
+
+/** Counts per collection, so a world of any shape reads back. */
+const describeWorld = (w: World) =>
+  Object.entries(w)
+    .filter(([, v]) => Array.isArray(v))
+    .map(([k, v]) => `${v.length} ${k}`)
+    .join(' · ')
 
 /** The base Postgres URL the target itself uses, minus its database name. */
 function pgBase(t: Target) {
@@ -108,7 +135,7 @@ async function rig(t: Target, quiet: boolean): Promise<Rig> {
         persona: p.name,
         role: p.role,
         email: p.email,
-        token: await login(url, p.email, password),
+          token: await login(url, p.email, t.password),
         base: url,
       })
     }
@@ -165,7 +192,7 @@ async function serveUi(t: Target): Promise<{ url: string; stop: () => Promise<vo
 }
 
 async function cmdRun() {
-  const t = target()
+  const t = await loadTarget(positional[0])
   const seed = num('seed', 4471)
   const waves = num('waves', 60)
   const collide = Number(flag('collide', '0.4'))
@@ -177,12 +204,13 @@ async function cmdRun() {
   const r = await rig(t, quiet)
   try {
     const world = await t.survey(r.surveyor)
-    console.log(
-      `  ${r.sessions.length} actors · surveyed ${world.customers.length} customers, ` +
-        `${world.slots.length} windows, ${world.dates.length} bookable dates\n`,
-    )
-    if (!world.customers.length || !world.slots.length) {
-      throw new Error('the survey came back empty — is the source database seeded?')
+    console.log(`  ${r.sessions.length} actors · surveyed ${describeWorld(world)}\n`)
+    const missing = (t.requiresWorld ?? []).filter((k: string) => !world[k]?.length)
+    if (missing.length) {
+      throw new Error(
+        `the survey found no ${missing.join(', ')} — a voyage would sail over an empty world and ` +
+          `report clear water. Seed the source database, then --rebuild-template.`,
+      )
     }
 
     const result = await runVoyage(
@@ -319,7 +347,7 @@ async function cmdReplay() {
   const file = positional[0]
   if (!file) throw new Error('usage: shoal replay <chart.json> [--attempts 5] [--minimised]')
   const chart: Chart = JSON.parse(readFileSync(file, 'utf8'))
-  const t = TARGETS[chart.target]!
+  const t = await loadTarget(chart.target)
   const log = has('minimised') && chart.minimised ? chart.minimised : chart.log
   const attempts = num('attempts', 3)
   const actions = new Map(t.actions.map((a) => [a.name, a]))
@@ -342,7 +370,7 @@ async function cmdReplay() {
 }
 
 async function cmdSoundings() {
-  const t = target()
+  const t = await loadTarget(positional[0])
   console.log(`\n  ${t.soundings.length} soundings for ${t.name}\n`)
   for (const s of t.soundings) {
     console.log(`  ${s.id}`)
@@ -352,7 +380,7 @@ async function cmdSoundings() {
 }
 
 async function cmdDoctor() {
-  const t = target()
+  const t = await loadTarget(positional[0])
   const base = pgBase(t)
   console.log(`\n  target   ${t.name} at ${t.root}`)
   console.log(`  postgres ${new URL(base.replace(/\?.*$/, '')).host}`)
@@ -363,8 +391,8 @@ async function cmdDoctor() {
   const r = await rig(t, true)
   try {
     const world = await t.survey(r.surveyor)
-    console.log(`  booted   port ${t.port}, ${r.sessions.length} personas logged in`)
-    console.log(`  world    ${world.customers.length} customers · ${world.products.length} products · ${world.slots.length} windows`)
+    console.log(`  booted   port ${t.port}, ${r.sessions.length} sessions logged in`)
+    console.log(`  world    ${describeWorld(world)}`)
     const v = await sweep(t, context(r, world), -1)
     console.log(`  sweep    ${t.soundings.length} soundings ran, ${v.length} tripped on the seeded data`)
     for (const x of v) {
@@ -375,7 +403,7 @@ async function cmdDoctor() {
       for (const row of x.rows) console.log(`             ${JSON.stringify(row)}`)
     }
 
-    const empty = ['customers', 'products', 'slots'].filter((k) => (world as any)[k].length === 0)
+    const empty = (t.requiresWorld ?? []).filter((k: string) => !world[k]?.length)
     if (empty.length) {
       console.log(`\n  The survey found no ${empty.join(', ')}. A voyage would sail over an empty world and`)
       console.log(`  report clear water. Seed the source database, then rebuild with --rebuild-template.\n`)

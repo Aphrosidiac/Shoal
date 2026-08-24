@@ -5,21 +5,14 @@
 Shoal points a swarm of concurrent actors at a running system, takes soundings
 after every wave, and charts what it ran aground on.
 
-It is not a test runner and it is not a fuzzer. Both of those already exist in
-the systems it was built for and both are good at what they do. Shoal exists for
-the class of defect neither can reach: the one that needs **two people acting at
-the same moment**, or **a world that has been running for a while**, and that
-leaves no error behind when it happens.
+It is not a test runner and it is not a fuzzer. Both of those probably already
+exist in your project and both are good at what they do. Shoal exists for the
+class of defect neither can reach: the one that needs **two people acting at the
+same moment**, or **a world that has been running for a while**, and that leaves
+no error behind when it happens.
 
-**What you can run.** The engine in `src/core` and `src/triage` is
-target-agnostic. The one bundled target, `bbf`, points at a private back-office
-system you do not have, so it is there as a worked example rather than something
-you can execute — read `src/targets/bbf/soundings.ts` first, because the
-soundings are the part worth copying. Adding your own target is three files;
-see below.
-
-Postgres-backed HTTP APIs only, at present. Nothing in the design assumes more
-than that, but nothing has proved it either.
+Point it at any Postgres-backed HTTP API. Describing your system is one
+directory; nothing in `src/` knows about it.
 
 ## Why this and not another audit
 
@@ -34,10 +27,50 @@ Reading code misses things for five reasons, and they are not the same reason:
 
 Shoal attacks 1, 2, 3 and 5. It does **not** fix 4, and it makes 4 worse if you
 let it: an invariant extracted from the implementation encodes the
-implementation's bugs and then agrees with them for ever. Every sounding in
-`src/targets/*/soundings.ts` carries a `because` written from what is true of
-the *business*, not of the code. If you cannot write that sentence without
-looking at the source, the sounding is not ready.
+implementation's bugs and then agrees with them for ever. Every sounding carries
+a `because` written from what is true of the *business*, not of the code. If you
+cannot write that sentence without looking at the source, the sounding is not
+ready.
+
+## What is in the box
+
+```
+src/core/        the engine — waves, collisions, seasoning, sweeps, starvation
+src/soundings/   checks that hold for ANY system, parameterised
+src/triage/      replay, delta-debugging shrinker, charts
+src/target/      what you implement
+targets/example/ a worked example to copy
+```
+
+The split that matters is between two kinds of rule.
+
+**Rules from the business.** "Payments sum to the figure on the invoice." "No
+delivery window holds more jobs than it has capacity for." Nobody can write
+these for you, they are where nearly all the value is, and they go in your
+target.
+
+**Rules from the shape of a system.** "Walking a paged list sees every row
+exactly once." "A role reaches exactly the routes it was granted." These are
+the same everywhere, so they ship as configurable builders. A new target gets a
+real instrument on day one, before a single domain rule exists.
+
+## The generic soundings
+
+| Builder | Catches |
+|---|---|
+| `pagingIsStable` | ORDER BY a non-unique column with OFFSET: a row on two pages, another on none |
+| `listingMatchesCount` | a list quietly showing fewer rows than the table holds |
+| `roleGating` | a route answered for a role never granted it — and a role locked out of its own job |
+| `frozenAfter` | fields that must stop changing once a row is issued, rewritten later |
+| `noOrphanedRows` | references to parents that are not there, read from the FK catalogue |
+| `screenAgreesWithTheDatabase` | a page that renders blank over a table full of rows |
+
+Plus one the engine does for free: any 5xx is a server fault, because a wrong
+request is a 4xx and anything else is the server admitting fault.
+
+`noOrphanedRows` is vacuous where the database enforces its own keys, and says
+so — it earns its place on `relationMode = "prisma"`, PlanetScale, sharded
+schemas, and anywhere a migration dropped a constraint nobody replaced.
 
 ## How it works
 
@@ -124,10 +157,9 @@ Pretending otherwise would be the more comfortable lie and a useless tool.
 npm install
 ```
 
-Then tell Shoal where the target is and how to log into it. Credentials and
-machine paths are deliberately not in the source — this repository is public,
-and a password committed to a repository does not become secret again when the
-visibility changes back.
+Tell Shoal where the target is and how to log in. Paths are machine-specific and
+credentials are secret, so neither belongs in source — a password committed to a
+repository does not become secret again when the visibility changes back.
 
 ```bash
 cp shoal.local.example.json shoal.local.json
@@ -135,7 +167,7 @@ cp shoal.local.example.json shoal.local.json
 
 ```json
 {
-  "bbf": {
+  "example": {
     "root": "/absolute/path/to/the/target/backend",
     "webRoot": "/absolute/path/to/the/target/frontend",
     "password": "the shared password the target's seed sets on its accounts",
@@ -144,13 +176,13 @@ cp shoal.local.example.json shoal.local.json
 }
 ```
 
-`shoal.local.json` is gitignored and has no fallback: a built-in default would
-put the password back in the source and make the exercise decorative. Personas
-build their addresses from `emailDomain`, so the target is not named in the
-repository either. `webRoot` is optional and only needed for `--ui`.
+Everything except `root` is whatever your target asks for; Shoal does not
+inspect it. `shoal.local.json` is gitignored and has no fallback — a built-in
+default would put the password back in the source and make the exercise
+decorative.
 
 ```bash
-npm run shoal -- doctor bbf
+npm run shoal -- doctor example
 ```
 
 `doctor` clones the target's database into a template, resets a working copy,
@@ -159,46 +191,70 @@ the seed data. If anything trips before a voyage has done a thing, the sounding
 is wrong or the seed is — fix that first.
 
 ```bash
-npm run shoal -- run bbf --seed 4471 --waves 60 --collide 0.4
+npm run shoal -- run example --seed 4471 --waves 70 --season 30
 ```
 
 ```bash
-npm run shoal -- run bbf --seed 4471 --minimise --attempts 2
+npm run shoal -- run example --seed 4471 --minimise --attempts 2
 ```
 
 ```bash
-npm run shoal -- replay charts/bbf-4471.json --attempts 5
+npm run shoal -- replay charts/example-4471.json --attempts 5
 ```
 
 ```bash
-npm run shoal -- soundings bbf
+npm run shoal -- soundings example
 ```
 
-```bash
-npm run shoal -- run bbf --seed 6001 --waves 70 --season 30 --ui
-```
+A target is found at `targets/<name>/index.ts`, or anywhere via
+`--target ./path/to/index.ts`. Keep yours beside the system it describes rather
+than here.
 
 Flags: `--waves` `--season` `--collide` `--sound-every` `--attempts` `--verbose`
-`--rebuild-template` (re-clone after reseeding the target) `--ui` (drive the
+`--target` `--rebuild-template` (re-clone after reseeding) `--ui` (drive the
 frontend in a real browser at the end) `--rebuild-ui` (force a frontend build).
 
-### The browser
+## Writing a target
 
-`--ui` builds the target's frontend, serves the bundle with `/api` pointed at
-the voyage's own backend, and drives it with the installed Chrome.
+Copy `targets/example/index.ts`. It is a complete, commented example of an
+imaginary ordering system and does not run against anything — it is there for
+the shape and the reasoning.
 
-Not the target's `vite dev`: its config hardcodes a proxy to the app's normal
-development port, so a UI driven through it would be talking to a different
-database than the one being swept. Rewriting that config means writing into the
-target's repository, which Shoal has no business doing. Serving the built
-bundle avoids all of it and has the side benefit of testing what actually
-ships.
+A target exports one factory, which receives its entry from
+`shoal.local.json`:
 
-Two things are checked and nothing else. Nothing threw — no console error, no
-unhandled rejection, no 5xx behind the page. And where the database holds rows,
-the screen shows some. Not how many and not in what order: a UI probe that
-asserts on layout becomes a screenshot test that fails on every design change
-and is switched off within a month.
+```ts
+export default defineTarget<MyWorld>((cfg) => ({
+  name: 'myapp',
+  root: cfg.root,
+  password: required(cfg, 'password'),
+  sourceDb: 'myapp', workDb: 'myapp_shoal', templateDb: 'myapp_shoal_tpl',
+  port: 3920,
+  requiresWorld: ['customers'],
+  personas, actions, soundings,
+  survey,
+}))
+```
+
+Four things to get right, in the order they will bite you:
+
+1. **`survey` must run as an ungated role.** A 403 during setup looks exactly
+   like an empty system, and a swarm that cannot see anything finds nothing
+   while reporting clear water.
+2. **`requiresWorld` names the collections a voyage cannot sail without**, so an
+   empty world is refused rather than reported as calm.
+3. **`collidable` versus `collideVariants`.** The first points every actor at
+   the same row — five people paying one invoice, which IS the race. The second
+   is for a scarce shared resource, where each actor needs a DIFFERENT row
+   competing for one thing; identical arguments there book one job five times
+   and prove nothing.
+4. **Every `because` comes from the business.** If you cannot write that
+   sentence without reading the source, the sounding is not ready.
+
+Personas are **operational**, not demographic. Role, competence, intent,
+environment and tenure change which code runs. "Ahmad, 34, likes coffee" does
+not. `instances` runs one login as several simultaneous sessions, because
+contention is bounded by how many actors can legally reach an action.
 
 ## The database
 
@@ -218,7 +274,11 @@ voyage must never reach a real customer.
 Cloning requires no other connection to the source database. Stop the target's
 dev server and Prisma Studio before the first `doctor`.
 
-## Proving the instrument
+## Case study: proving the instrument
+
+Everything below happened on one private system, which is not in this
+repository. It is kept because how an instrument was calibrated is the only
+reason to trust what it reports.
 
 BBF was chosen because two of its races are already found, fixed and committed,
 which turns "does this work" into a question with an answer. Each fix was
@@ -331,30 +391,6 @@ message is caught; the contact-and-conversation find-or-create that runs before
 it is not. Reproduces 3/3. Realistic without a swarm: Meta retries webhooks, and
 a customer sending two messages quickly produces two concurrent POSTs.
 
-## Adding a target
-
-`src/targets/<name>/` needs three things:
-
-- **`soundings.ts`** — SQL that returns violating rows, each with a `because`
-  written from the business. This is the product; everything else is delivery.
-- **`actions.ts`** — what an actor can do. Mark `collidable` on anything worth
-  pointing several actors at simultaneously.
-- **`index.ts`** — personas, database names, port, and a `survey` that reads the
-  starting world back off the API. The survey must run as an ungated role; a
-  403 during setup looks exactly like an empty system.
-
-Register it in the `TARGETS` map in `src/cli.ts`, and give it an entry in
-`shoal.local.json` for the paths and the login. Anything machine-specific or
-secret belongs there and not in `index.ts`.
-
-Optional, and worth adding in this order once the basics work:
-`collisionGroups` for contention between two different actions, `seasonBias`
-for the build-up phase, and `uiProbe` for the browser.
-
-Personas are **operational**, not demographic. Role, competence, intent,
-environment and tenure change which code runs. "Ahmad, 34, likes coffee" does
-not.
-
 ## The five blind spots, and where each stands
 
 The whole design is aimed at what reading code cannot see. Stated plainly so
@@ -380,5 +416,10 @@ instead, it will agree with the bug it was supposed to catch.
   Shoal could not currently find it.
 - **The browser only looks.** It logs in and reads. It does not fill a form,
   submit it, or race another actor from the UI.
-- **One target.** Everything in `src/core` is target-agnostic; nothing has
-  proved that by being pointed at a second system.
+- **A second target.** The engine and the generic soundings are written to be
+  target-agnostic and the one real target is a plugin outside this repository —
+  but nothing has proved the abstraction by being pointed at a second system,
+  and an abstraction with one implementation is a guess.
+- **Anything but Postgres and HTTP.** The reset is a Postgres template clone and
+  the driver speaks HTTP. Neither is deep in the design; both are the only thing
+  that has been tried.

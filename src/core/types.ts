@@ -16,53 +16,20 @@ export interface Session {
   base: string
 }
 
-/** A document Shoal has seen, with enough of it to act on. */
-export interface DocRef {
-  id: string
-  docNo: string
-  total: number
-  /**
-   * Last status Shoal saw, for DRIVING only.
-   *
-   * This is a model of how the business moves a document, used to choose a
-   * plausible next request — not an oracle. Nothing asserts on it. A swarm
-   * that picks statuses at random walks documents into VOID immediately and
-   * then spends the voyage being refused: convert-quotation was turned away
-   * 29 times out of 29 before this existed, and the run still read as clean.
-   */
-  status: string
-}
-
 /**
  * What Shoal knows exists right now. Actions read it to choose targets.
  *
- * Deliberately a cache, not a query. If every action re-read the world it
- * would only ever aim at rows that are currently valid, and the interesting
- * requests are the ones aimed at a row another actor has just changed
- * underneath it.
+ * A bag of named collections, and deliberately nothing more. This used to name
+ * quotations, invoices and delivery windows — one target's nouns welded into
+ * the engine's own type, so a second system could not be described without
+ * editing core. What a collection holds is the target's business.
+ *
+ * Deliberately a cache, not a query. If every action re-read the world it would
+ * only ever aim at rows that are currently valid, and the interesting requests
+ * are the ones aimed at a row another actor has just changed underneath it.
  */
 export interface World {
-  customers: string[]
-  products: string[]
-  slots: string[]
-  /** Dates the swarm books into. Nothing is ever allowed to close one. */
-  dates: string[]
-  /**
-   * Dates that exist to be closed.
-   *
-   * Blacking out a date permanently removes it from the bookable world. With
-   * one shared pool of three dates, a blackout on wave 0 closed the first and
-   * the rest followed: an entire 80-wave voyage scheduled NOTHING and reported
-   * clear water on every delivery sounding. Anything that closes a date takes
-   * a fresh one from here, so the race is still generated and the world
-   * survives it.
-   */
-  spareDates: string[]
-  quotations: DocRef[]
-  invoices: DocRef[]
-  deliveries: string[]
-  /** Inbound WhatsApp ids already delivered, so one can be delivered twice. */
-  waMessageIds: string[]
+  [collection: string]: any[]
 }
 
 export interface Outcome {
@@ -78,7 +45,7 @@ export interface Outcome {
  * — no invoice to pay, no slot to book. A null is not a failure, it is a turn
  * the actor spends doing something else.
  */
-export interface Action<A = any> {
+export interface Action<A = any, W extends World = World> {
   name: string
   /** Roles permitted to attempt it. An actor outside the list never picks it. */
   roles: string[]
@@ -100,9 +67,9 @@ export interface Action<A = any> {
    * Return one argument set per actor, sharing the contended resource and
    * differing in the row each actor acts on.
    */
-  collideVariants?(w: World, rng: Rng, actors: number): A[] | null
-  pick(w: World, rng: Rng): A | null
-  run(s: Session, args: A, w: World): Promise<Outcome>
+  collideVariants?(w: W, rng: Rng, actors: number): A[] | null
+  pick(w: W, rng: Rng): A | null
+  run(s: Session, args: A, w: W): Promise<Outcome>
 }
 
 export interface Persona {
@@ -224,13 +191,21 @@ export interface LogEntry {
  * date while somebody books onto it — and no amount of repeating one action
  * generates that.
  */
-export interface CollisionGroup {
+export interface CollisionGroup<W extends World = World> {
   name: string
   /** One item per actor wanted; each names an action and its arguments. */
-  build(w: World, rng: Rng, actors: number): { action: string; args: any }[] | null
+  build(w: W, rng: Rng, actors: number): { action: string; args: any }[] | null
 }
 
-export interface Target {
+/**
+ * A system under test.
+ *
+ * Generic over its own world so a target can declare what its collections
+ * hold and get that back with types, while the engine keeps working against
+ * any shape. `Target` on its own means "some target", which is what the CLI
+ * and the voyage want.
+ */
+export interface Target<W extends World = World> {
   name: string
   /** Where the target repo lives. */
   root: string
@@ -241,10 +216,24 @@ export interface Target {
   port: number
   /** The frontend, when the target has one worth driving. */
   web?: { root: string; port: number }
+  /**
+   * Password the personas log in with. Comes from the target's own config file,
+   * never from its source.
+   */
+  password: string
+  /**
+   * Collections the survey must come back with something in.
+   *
+   * A voyage over an empty world reports clear water on everything, so a target
+   * says which parts of the world it cannot meaningfully sail without. Without
+   * this the check was three collection names hardcoded in the CLI — one
+   * target's nouns deciding whether any other target was ready.
+   */
+  requiresWorld?: string[]
   personas: Persona[]
-  actions: Action[]
+  actions: Action<any, W>[]
   soundings: Sounding[]
-  collisionGroups?: CollisionGroup[]
+  collisionGroups?: CollisionGroup<W>[]
   /**
    * Action weights during seasoning.
    *
@@ -258,5 +247,5 @@ export interface Target {
   /** Built on demand, so the browser is only launched when asked for. */
   uiProbe?(opts: { url: string }): ProbeSounding
   /** Fresh world, read back off the API after a reset. */
-  survey(s: Session): Promise<World>
+  survey(s: Session): Promise<W>
 }
