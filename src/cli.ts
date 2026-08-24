@@ -89,13 +89,12 @@ function pgBase(t: Target) {
 interface Rig {
   sessions: Session[]
   /**
-   * The actor the survey runs as.
+   * The actor the survey runs as, chosen by the target's `surveyAs`.
    *
-   * It has to be the manager. Every other role is page-gated — the first
-   * survey ran as a salesperson, whose token cannot reach
-   * /api/logistics/resources, so it reported zero delivery windows and the
-   * swarm quietly never booked anything. A 403 during setup looks exactly
-   * like an empty system.
+   * It has to be one that can see everything. The first survey ran as a
+   * salesperson, whose token could not reach the delivery windows, so it
+   * reported zero of them and the swarm quietly never booked anything. A 403
+   * during setup looks exactly like an empty system.
    */
   surveyor: Session
   db: Soundings
@@ -117,49 +116,71 @@ async function rig(t: Target, quiet: boolean): Promise<Rig> {
 
   const booted = await bootTarget({
     root: t.root,
-    entry: 'src/server.ts',
+    entry: t.entry ?? 'src/server.ts',
     port: t.port,
     databaseUrl: dbUrl(base, t.workDb),
+    env: t.env,
+    healthPath: t.healthPath,
     quiet,
   })
 
-  const url = `http://127.0.0.1:${t.port}`
-  const sessions: Session[] = []
-  for (const p of t.personas) {
-    const copies = Math.max(1, p.instances ?? 1)
-    for (let i = 0; i < copies; i++) {
-      sessions.push({
-        // The suffix only appears when there is more than one, so single-session
-        // personas keep the id their logs and charts already use.
-        id: copies === 1 ? p.name : `${p.name}#${i + 1}`,
-        persona: p.name,
-        role: p.role,
-        email: p.email,
-          token: await login(url, p.email, t.password),
-        base: url,
-      })
+  // Everything after the boot runs inside a guard.
+  //
+  // A failure here — a persona that cannot log in, a surveyor the target does
+  // not define — used to leave the booted process running with nothing holding
+  // a handle to it. The next run then found its port occupied by a server
+  // pointed at a database that had since been dropped, which reports as
+  // something else entirely.
+  try {
+    const url = `http://127.0.0.1:${t.port}`
+    const sessions: Session[] = []
+    for (const p of t.personas) {
+      const copies = Math.max(1, p.instances ?? 1)
+      // ONE login per persona, not per session.
+      //
+      // `instances` is one account in several tabs, and a tab does not
+      // re-authenticate. Logging in per session multiplied the calls by the tab
+      // count and walked straight into a login route that allows five a minute,
+      // so the swarm could not start at all.
+      const token = await login(url, p.email, t.password, t.auth)
+      for (let i = 0; i < copies; i++) {
+        sessions.push({
+          // The suffix only appears when there is more than one, so a
+          // single-session persona keeps the id its logs and charts already use.
+          id: copies === 1 ? p.name : `${p.name}#${i + 1}`,
+          persona: p.name,
+          role: p.role,
+          email: p.email,
+          token,
+          base: url,
+        })
+      }
     }
-  }
 
-  const surveyor = sessions.find((s) => s.role === 'MANAGER')
-  if (!surveyor) throw new Error(`${t.name} defines no MANAGER persona; the survey has nothing ungated to run as`)
+    const surveyor = t.surveyAs ? sessions.find((s) => s.persona === t.surveyAs) : sessions[0]
+    if (!surveyor) throw new Error(`${t.name} names "${t.surveyAs}" as its surveyor but has no such persona`)
 
-  const db = new Soundings(dbUrl(base, t.workDb))
-  await db.open()
-  let stopped = false
-  return {
-    sessions,
-    surveyor,
-    db,
-    stderr: booted.stderr,
-    // Idempotent on purpose. The caller stops the rig early before shrinking
-    // and the `finally` stops it again on the way out.
-    stop: async () => {
-      if (stopped) return
-      stopped = true
-      await db.close()
-      await booted.stop()
-    },
+    const db = new Soundings(dbUrl(base, t.workDb))
+    await db.open()
+
+    let stopped = false
+    return {
+      sessions,
+      surveyor,
+      db,
+      stderr: booted.stderr,
+      // Idempotent on purpose. The caller stops the rig early before shrinking
+      // and the `finally` stops it again on the way out.
+      stop: async () => {
+        if (stopped) return
+        stopped = true
+        await db.close()
+        await booted.stop()
+      },
+    }
+  } catch (e) {
+    await booted.stop()
+    throw e
   }
 }
 
@@ -198,6 +219,7 @@ async function cmdRun() {
   const collide = Number(flag('collide', '0.4'))
   const soundEvery = num('sound-every', 5)
   const seasonWaves = num('season', 25)
+  const paceMs = num('pace', 0)
   const quiet = !has('verbose')
 
   console.log(`\n  shoal · ${t.name} · seed ${seed} · ${seasonWaves} seasoning + ${waves} waves\n`)
@@ -226,6 +248,7 @@ async function cmdRun() {
         collideRate: collide,
         soundEvery,
         seasonWaves,
+        paceMs,
         onWave: (w) => {
           const total = seasonWaves + waves
           if (w % 10 === 9) {
@@ -247,6 +270,7 @@ async function cmdRun() {
       violations: result.violations,
       serverFaults: result.serverFaults,
       starved: result.starved,
+      throttled: result.throttled,
       log: result.log,
     }
 
@@ -322,6 +346,13 @@ async function cmdRun() {
 }
 
 function report(chart: Chart) {
+  // Before anything else. A voyage that was mostly refused for going too fast
+  // has not tested what it looks like it tested.
+  if (chart.throttled) {
+    const share = Math.round((chart.throttled / Math.max(chart.log.length, 1)) * 100)
+    console.log(`  THROTTLED  ${chart.throttled} requests refused with 429 (${share}% of the voyage)`)
+    if (share > 10) console.log(`             raise --pace until this is near zero, or the run means little`)
+  }
   // Printed FIRST, and before any verdict. A voyage that never managed to do
   // something has not tested it, and the reader has to know that before they
   // read anything else as reassurance.

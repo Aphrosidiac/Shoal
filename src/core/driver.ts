@@ -33,15 +33,52 @@ export async function call(
   return { status: res.status, body: parsed, ms: Math.round(performance.now() - started) }
 }
 
-export async function login(base: string, email: string, password: string): Promise<string> {
-  const res = await fetch(`${base}/api/auth/login`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email, password }),
-  })
-  const body: any = await res.json().catch(() => ({}))
-  if (!res.ok || !body?.token) {
-    throw new Error(`login failed for ${email}: ${res.status} ${JSON.stringify(body).slice(0, 200)}`)
+export interface AuthShape {
+  path?: string
+  token?(body: any): string | undefined
+  body?(email: string, password: string): unknown
+}
+
+/**
+ * Logs in, however this particular system spells it.
+ *
+ * The path, the request body and where the token sits in the reply are all the
+ * target's business. This was hardcoded to `/api/auth/login` returning
+ * `{ token }` until a second system replied `{ success, data: { token } }` and
+ * every persona failed to log in — which is what an abstraction with one
+ * implementation is worth.
+ */
+export async function login(
+  base: string,
+  email: string,
+  password: string,
+  auth: AuthShape = {},
+): Promise<string> {
+  const path = auth.path ?? '/api/auth/login'
+
+  // Backs off on 429 rather than failing.
+  //
+  // Throttling the login route is ordinary and sensible — one system here
+  // allows five a minute — and a swarm that cannot start because of it is the
+  // swarm's fault, not the target's.
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(`${base}${path}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(auth.body ? auth.body(email, password) : { email, password }),
+    })
+    const body: any = await res.json().catch(() => ({}))
+
+    if (res.status === 429 && attempt < 4) {
+      const wait = Number(res.headers.get('retry-after')) * 1000 || (attempt + 1) * 8000
+      await new Promise((r) => setTimeout(r, Math.min(wait, 30_000)))
+      continue
+    }
+
+    const token = auth.token ? auth.token(body) : body?.token
+    if (!res.ok || !token) {
+      throw new Error(`login failed for ${email} at ${path}: ${res.status} ${JSON.stringify(body).slice(0, 200)}`)
+    }
+    return token
   }
-  return body.token as string
 }

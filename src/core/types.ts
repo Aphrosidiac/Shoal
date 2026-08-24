@@ -214,6 +214,33 @@ export interface Target<W extends World = World> {
   workDb: string
   templateDb: string
   port: number
+  /** Path to the server entry point, relative to `root`. Default `src/server.ts`. */
+  entry?: string
+  /** Answers 200 once the target is up. Default `/api/health`. */
+  healthPath?: string
+  /**
+   * How this system logs in.
+   *
+   * Not every API answers the same shape. The first target replied `{ token }`
+   * and the second `{ success, data: { token } }`, which is the sort of thing
+   * an abstraction with one implementation never finds out.
+   */
+  auth?: {
+    /** Default `/api/auth/login`. */
+    path?: string
+    /** Pulls the bearer token out of the response. Default `body.token`. */
+    token?(body: any): string | undefined
+    /** Builds the request body. Default `{ email, password }`. */
+    body?(email: string, password: string): unknown
+  }
+  /**
+   * Extra environment for the booted process.
+   *
+   * Anything the target needs pointed somewhere harmless: a cache the voyage
+   * should not share with the developer's own, a scheduler that should stay
+   * quiet, an outbound channel that must never reach a real customer.
+   */
+  env?: Record<string, string>
   /** The frontend, when the target has one worth driving. */
   web?: { root: string; port: number }
   /**
@@ -221,6 +248,15 @@ export interface Target<W extends World = World> {
    * never from its source.
    */
   password: string
+  /**
+   * Which persona the survey runs as, by name. Defaults to the first.
+   *
+   * It has to be one that can see the whole system. This used to look for a
+   * persona whose role was literally `MANAGER` — one target's role name, in
+   * the engine — so the second target could not survey at all. Whatever it is
+   * called, a 403 during setup looks exactly like an empty system.
+   */
+  surveyAs?: string
   /**
    * Collections the survey must come back with something in.
    *

@@ -342,6 +342,45 @@ twice in a voyage and none walked DRAFT → SENT → ACCEPTED.
 
 Every one of those looked exactly like a passing test.
 
+## The second target, and what it cost
+
+An abstraction with one implementation is a guess. Pointing Shoal at a second,
+unrelated system — a different domain, a different codebase generation, a
+different schema convention — found **six** things that had been written for the
+first one and looked general:
+
+| What broke | Was | Is |
+|---|---|---|
+| Login | hardcoded `/api/auth/login` returning `{ token }` | `auth.path` and `auth.token(body)` |
+| Health check | hardcoded `/api/health` | `healthPath` |
+| The surveyor | searched for a persona whose role was literally `MANAGER` | `surveyAs`, by name |
+| Logins | one per SESSION, so four tabs burned four | one per PERSONA, plus backoff on 429 |
+| Rate limits | assumed absent; a swarm was 429s and read as starvation | `--pace`, and 429 counted and reported separately |
+| Refusal messages | read `body.error` only | `body.error ?? body.message` |
+
+Two more were plain bugs the second target simply reached first: a failure
+between boot and login leaked the booted process, so the next run found its port
+held by a server pointed at a dropped database; and a target's own environment
+could not be set, which a Redis-backed rate limiter made necessary.
+
+None of that was visible from one system. All of it looked like design.
+
+### What it found there
+
+The same instrument, on a system it had never seen, using soundings written from
+that business rather than from either codebase:
+
+**Four concurrent payments of RM 3,602 against one invoice, all four returning
+200.** The payment rows summed to RM 21,612; the invoice's paid figure read
+RM 10,806 — exactly half, and RM 10,806 of a client's money missing from the
+balance. The handler re-derives the total as a SUM, which is right, and takes no
+row lock, which is not. It is the same defect as the one the first target had
+already fixed, in a codebase that shares no code with it.
+
+Also: no outstanding-balance guard at all, so an invoice of RM 15,072 accepted
+RM 60,288 — not a race, simply unchecked. And a client error thrown without a
+status code, so paying a cancelled invoice answers 500.
+
 ## Findings so far
 
 Four, none of them previously known, all on current `main`. Two needed
@@ -416,10 +455,9 @@ instead, it will agree with the bug it was supposed to catch.
   Shoal could not currently find it.
 - **The browser only looks.** It logs in and reads. It does not fill a form,
   submit it, or race another actor from the UI.
-- **A second target.** The engine and the generic soundings are written to be
-  target-agnostic and the one real target is a plugin outside this repository —
-  but nothing has proved the abstraction by being pointed at a second system,
-  and an abstraction with one implementation is a guess.
+- **A third target.** Two systems have been described, which is enough to have
+  found six things welded to the first and not enough to claim the abstraction
+  is right.
 - **Anything but Postgres and HTTP.** The reset is a Postgres template clone and
   the driver speaks HTTP. Neither is deep in the design; both are the only thing
   that has been tried.

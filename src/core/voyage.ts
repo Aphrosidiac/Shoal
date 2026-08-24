@@ -34,6 +34,15 @@ export interface VoyageOpts {
   soundEvery: number
   /** Waves spent building state before the voyage proper begins. */
   seasonWaves?: number
+  /**
+   * Milliseconds to wait between waves.
+   *
+   * For targets that rate-limit. Sending faster than the limit turns a voyage
+   * into several hundred 429s, which finds nothing and reads like a swarm that
+   * found nothing. Pacing costs wall clock and costs no coverage: the requests
+   * within a wave still go out together, which is the only part a race needs.
+   */
+  paceMs?: number
   /** Share of collision waves given to a cross-action group, when any exist. */
   groupRate?: number
   onWave?: (wave: number, log: LogEntry[]) => void
@@ -44,6 +53,14 @@ export interface VoyageResult {
   violations: Violation[]
   serverFaults: LogEntry[]
   waves: number
+  /**
+   * How many requests the target refused with 429.
+   *
+   * Reported separately from every other refusal. A throttled swarm and a
+   * swarm that found nothing look identical in a summary, and one of them is a
+   * measurement and the other is an accident.
+   */
+  throttled: number
   /**
    * Actions the swarm tried repeatedly and never once completed.
    *
@@ -167,7 +184,14 @@ export async function runVoyage(
         const base = { wave, session: p.session.id, persona: p.session.persona, action: p.action.name, args: p.args }
         try {
           const out = await p.action.run(p.session, p.args, world)
-          const note = out.status >= 400 ? String(out.body?.error ?? '').slice(0, 120) : undefined
+          // Both spellings, because APIs disagree and a refusal with no
+          // reason attached is a log nobody can read. The first target said
+          // `error`, the second `message`, and until this took both, seventeen
+          // 500s arrived with nothing beside them.
+          const note =
+            out.status >= 400
+              ? String(out.body?.error ?? out.body?.message ?? '').slice(0, 120)
+              : undefined
           return { ...base, status: out.status, ms: out.ms, produced: extractId(out.body), note, ...(seasoning ? { season: true } : {}) }
         } catch (e: any) {
           return { ...base, status: 0, ms: 0, error: String(e?.message ?? e).slice(0, 300), ...(seasoning ? { season: true } : {}) }
@@ -176,6 +200,7 @@ export async function runVoyage(
     )
     log.push(...entries)
     opts.onWave?.(wave, entries)
+    if (opts.paceMs) await new Promise((r) => setTimeout(r, opts.paceMs))
 
     if (!seasoning && ((wave - season) % opts.soundEvery === opts.soundEvery - 1 || wave === season + opts.waves - 1)) {
       // One violation per sounding per voyage. A broken invariant stays broken
@@ -202,5 +227,6 @@ export async function runVoyage(
     .filter(([, a]) => a.n >= 5 && a.ok === 0)
     .map(([action, a]) => ({ action, attempts: a.n }))
 
-  return { log, violations, serverFaults, waves: season + opts.waves, starved }
+  const throttled = log.filter((e) => e.status === 429).length
+  return { log, violations, serverFaults, waves: season + opts.waves, starved, throttled }
 }

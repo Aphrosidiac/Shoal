@@ -11,6 +11,7 @@ export interface Chart {
   violations: Violation[]
   serverFaults: LogEntry[]
   starved?: { action: string; attempts: number }[]
+  throttled?: number
   log: LogEntry[]
   minimised?: LogEntry[]
   reproductionRate?: string

@@ -36,12 +36,12 @@ export function readDotEnv(path: string): Record<string, string> {
  * `expectOpen: false` is the one that matters: it is the difference between a
  * clean restart and a health check answered by the corpse of the last one.
  */
-async function waitForPort(port: number, expectOpen: boolean, timeoutMs: number) {
+async function waitForPort(port: number, expectOpen: boolean, timeoutMs: number, path = '/api/health') {
   const deadline = Date.now() + timeoutMs
   for (;;) {
     let open = false
     try {
-      const res = await fetch(`http://127.0.0.1:${port}/api/health`, {
+      const res = await fetch(`http://127.0.0.1:${port}${path}`, {
         signal: AbortSignal.timeout(1000),
       })
       open = res.ok
@@ -68,6 +68,9 @@ export async function bootTarget(opts: {
   entry: string
   port: number
   databaseUrl: string
+  /** Extra environment the target asked for. Applied last, so it wins. */
+  env?: Record<string, string>
+  healthPath?: string
   quiet?: boolean
 }): Promise<Booted> {
   const env = {
@@ -82,6 +85,7 @@ export async function bootTarget(opts: {
     OPENROUTER_API_KEY: '',
     WHATSAPP_ACCESS_TOKEN: '',
     AUTOCOUNT_USE_MOCK: 'true',
+    ...opts.env,
   }
 
   const stderr: string[] = []
@@ -107,7 +111,7 @@ export async function bootTarget(opts: {
   proc.stdout?.on('data', keep)
   proc.stderr?.on('data', keep)
 
-  await waitForPort(opts.port, false, 15_000)
+  await waitForPort(opts.port, false, 15_000, opts.healthPath)
 
   const deadline = Date.now() + 60_000
   for (;;) {
@@ -115,7 +119,7 @@ export async function bootTarget(opts: {
       throw new Error(`target exited (${proc.exitCode}) before it answered:\n${stderr.slice(-12).join('')}`)
     }
     try {
-      const res = await fetch(`http://127.0.0.1:${opts.port}/api/health`)
+      const res = await fetch(`http://127.0.0.1:${opts.port}${opts.healthPath ?? '/api/health'}`)
       if (res.ok) break
     } catch {
       /* not up yet */
@@ -145,7 +149,7 @@ export async function bootTarget(opts: {
     }
     // Waiting on the process is not enough — the port is what the next boot
     // collides with, so wait on the port.
-    await waitForPort(opts.port, false, 10_000)
+    await waitForPort(opts.port, false, 10_000, opts.healthPath)
   }
 
   return { proc, stop, stderr }
