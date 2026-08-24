@@ -61,6 +61,22 @@ export interface Action<A = any> {
   weight: number
   /** True when several actors hitting this at once is worth forcing. */
   collidable?: boolean
+  /**
+   * How a collision wave should aim, when identical arguments are the wrong
+   * shape of contention.
+   *
+   * There are two kinds and only one is the default. SAME-ROW contention is
+   * five people paying the same invoice, and giving every actor identical
+   * arguments reproduces it exactly. SHARED-RESOURCE contention is five
+   * different jobs competing for the last place in one delivery window —
+   * identical arguments there book one job five times, which is not a race at
+   * all. That is why the first validation run missed the overbooking bug: the
+   * instrument was aiming the wrong way, and BBF looked clean.
+   *
+   * Return one argument set per actor, sharing the contended resource and
+   * differing in the row each actor acts on.
+   */
+  collideVariants?(w: World, rng: Rng, actors: number): A[] | null
   pick(w: World, rng: Rng): A | null
   run(s: Session, args: A, w: World): Promise<Outcome>
 }
@@ -69,6 +85,16 @@ export interface Persona {
   name: string
   email: string
   role: string
+  /**
+   * How many simultaneous sessions this login runs.
+   *
+   * Contention is bounded by how many actors can legally reach an action, and
+   * roles are page-gated: only LOGISTICS and MANAGER can book a delivery, so a
+   * collision wave had two actors against a window with a capacity of four and
+   * could never overbook it. Two tabs open on one account is an ordinary way
+   * for a person to work, and it is the honest way to raise the pressure.
+   */
+  instances?: number
   /** Multiplies an action's base weight. 0 removes it from this persona. */
   bias: Record<string, number>
 }
@@ -105,6 +131,14 @@ export interface LogEntry {
   status: number
   ms: number
   error?: string
+  /**
+   * What the target said when it refused.
+   *
+   * Without it a log of 400s is unreadable, and a swarm whose every request is
+   * being turned away looks identical to a swarm finding nothing. That is
+   * exactly how the first two slot-overbooking runs were misread.
+   */
+  note?: string
   /**
    * The id this action brought into existence, if any.
    *

@@ -47,7 +47,11 @@ export const personas: Persona[] = [
     name: 'planner',
     email: 'logistics@<target domain>',
     role: 'LOGISTICS',
-    bias: { 'schedule-delivery': 3, 'create-delivery': 2, 'add-blackout': 1 },
+    // Four tabs. With one, a collision wave for a delivery window musters two
+    // actors against a capacity of four and the window cannot be overbooked
+    // however hard the swarm tries.
+    instances: 4,
+    bias: { 'schedule-delivery': 3, 'create-delivery': 2.5, 'add-blackout': 0.6 },
   },
   {
     name: 'manager',

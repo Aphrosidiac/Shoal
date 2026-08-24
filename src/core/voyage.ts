@@ -61,10 +61,19 @@ function planWave(
     for (let attempt = 0; attempt < 6; attempt++) {
       const action = pick(rng, candidates)
       if (!action) break
-      const args = action.pick(world, rng)
-      if (args === null) continue
       const eligible = sessions.filter((s) => action.roles.includes(s.role))
       if (eligible.length < 2) continue
+
+      if (action.collideVariants) {
+        const variants = action.collideVariants(world, rng, eligible.length)
+        if (!variants || variants.length < 2) continue
+        return variants
+          .slice(0, eligible.length)
+          .map((args, i) => ({ session: eligible[i]!, action, args }))
+      }
+
+      const args = action.pick(world, rng)
+      if (args === null) continue
       return eligible.map((session) => ({ session, action, args }))
     }
   }
@@ -109,7 +118,8 @@ export async function runVoyage(
         const base = { wave, session: p.session.id, persona: p.session.persona, action: p.action.name, args: p.args }
         try {
           const out = await p.action.run(p.session, p.args, world)
-          return { ...base, status: out.status, ms: out.ms, produced: extractId(out.body) }
+          const note = out.status >= 400 ? String(out.body?.error ?? '').slice(0, 120) : undefined
+          return { ...base, status: out.status, ms: out.ms, produced: extractId(out.body), note }
         } catch (e: any) {
           return { ...base, status: 0, ms: 0, error: String(e?.message ?? e).slice(0, 300) }
         }

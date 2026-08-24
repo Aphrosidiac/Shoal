@@ -97,14 +97,19 @@ async function rig(t: Target, quiet: boolean): Promise<Rig> {
   const url = `http://127.0.0.1:${t.port}`
   const sessions: Session[] = []
   for (const p of t.personas) {
-    sessions.push({
-      id: p.name,
-      persona: p.name,
-      role: p.role,
-      email: p.email,
-      token: await login(url, p.email, password),
-      base: url,
-    })
+    const copies = Math.max(1, p.instances ?? 1)
+    for (let i = 0; i < copies; i++) {
+      sessions.push({
+        // The suffix only appears when there is more than one, so single-session
+        // personas keep the id their logs and charts already use.
+        id: copies === 1 ? p.name : `${p.name}#${i + 1}`,
+        persona: p.name,
+        role: p.role,
+        email: p.email,
+        token: await login(url, p.email, password),
+        base: url,
+      })
+    }
   }
 
   const surveyor = sessions.find((s) => s.role === 'MANAGER')

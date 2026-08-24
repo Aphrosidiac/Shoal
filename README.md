@@ -123,32 +123,78 @@ dev server and Prisma Studio before the first `doctor`.
 
 ## Proving the instrument
 
-The reason BBF is the first target is that some of its races are already found,
-fixed and committed. That makes "does this work" a question with an answer:
+BBF was chosen because two of its races are already found, fixed and committed,
+which turns "does this work" into a question with an answer. Each fix was
+un-applied against today's code — a cleaner experiment than a worktree, because
+it isolates the single change — and a voyage was run on a seed chosen before
+anything was touched. Shoal was told nothing about what to look for.
 
-| Commit | The defect | Shoal should |
+| Fix un-applied | Shoal found | Control with the fix restored |
 |---|---|---|
-| `b3f6acb^` | invoice row not locked before recomputing paid_amt — five concurrent RM200 payments against a RM1000 invoice left the invoice claiming RM400 | trip `paid-matches-payments` |
-| `9c6e3d2^` | availability is a read and races the booking | trip `slot-capacity` |
+| `b3f6acb` invoice row lock | `paid-matches-payments` **by wave 4** | clean, same seed |
+| `9c6e3d2` delivery-day advisory lock | `slot-capacity` — **7 jobs in a window of 4** | clean, same seed |
 
-Check the parent commit out into a worktree, point `bbf.root` at it, and run a
-voyage. If Shoal finds the bug **without being told what to look for**, the
-instrument works. If it does not, that is worth more than a green run.
+The payment case: invoice INV2608/2928, total RM 1,300. Two payments landed in
+one wave, RM 325 and RM 1,300, **both accepted with a 201**. The payment rows
+summed to RM 1,625; `paid_amt` read RM 325. RM 1,300 of a customer's money gone
+from the balance with the invoice still on the chase list — the same shape as
+the RM600 the fix was written for, and the same 7-in-a-window-of-4 the
+overbooking commit measured.
+
+### The run that found nothing, and why it mattered
+
+The first two attempts at the overbooking bug came back clean, and BBF was not
+the thing at fault.
+
+**A collision wave gave every actor identical arguments.** For a payment that is
+exactly right — five people paying the same invoice is the race. For a booking
+it is wrong: five actors scheduling *the same delivery* into a window book one
+job, not five. There are two kinds of contention and only one had been built.
+`collideVariants` is the second: one contended resource, a different row per
+actor.
+
+**Contention is bounded by who can legally reach the action.** Booking is
+page-gated to LOGISTICS and MANAGER, so a collision wave mustered two actors
+against a capacity of four and could not overbook it however hard it tried.
+Personas now declare `instances` — the planner runs four tabs, which is an
+ordinary way for a person to work.
+
+**Every scheduling call was a 400 and the log did not say so.** A swarm whose
+requests are all being turned away looks identical to a swarm finding nothing.
+Log entries now carry the refusal reason, and collision waves aim at recently
+created jobs rather than ones another actor has already advanced out of
+PLANNING.
+
+A clean run is a claim about the target. Two of these three were claims about
+the instrument.
 
 ## Findings so far
 
-**`total-equals-lines`, current `main`, seed 4471, reproduces 3/3.**
+**`total-equals-lines` — current `main`, not previously known.** Seed 4471,
+reproduces 3/3 as a full log and 11/39 once shrunk to its minimum.
 
 `PUT /api/sales-docs/:id` replaces a draft's lines with `deleteMany` followed by
-`create`, inside a transaction — but unlike the payment path it takes no row
-lock. Under READ COMMITTED each concurrent edit deletes only the rows already
-committed and visible to it, then inserts its own. Four simultaneous edits of
-one draft quotation left **12 line rows summing to RM 72,200 on a document
-whose total says RM 18,050** — the lines from every edit survived, the total
-came from whichever committed last.
+`create` inside a transaction, but unlike the payment path it takes no row lock.
+Under READ COMMITTED each concurrent edit deletes only the rows committed and
+visible to it, then inserts its own; every edit's rows survive and `total` comes
+from whichever transaction committed last.
 
-Two people editing the same draft at the same moment is an ordinary Tuesday,
-and the figure that comes out wrong is the one the customer adds up.
+Four simultaneous edits of one draft quotation left **12 line rows summing to
+RM 72,200 on a document whose total said RM 18,050**. All four returned 200.
+Nothing was logged and nothing was thrown.
+
+Shrunk from 253 actions to 9 across 2 waves:
+
+```
+wave  35  sales-pj   create-invoice    → 201
+wave  46  sales-jb   edit-doc-lines    → 200
+wave  46  sales-pj   edit-doc-lines    → 200
+wave  46  office     edit-doc-lines    → 200
+wave  46  manager    edit-doc-lines    → 200
+```
+
+Two people editing the same draft at the same moment is an ordinary Tuesday, and
+the figure that comes out wrong is the one the customer adds up.
 
 ## Adding a target
 
@@ -175,5 +221,9 @@ not.
   sounding, not SQL.
 - Fault injection at the boundary: webhooks delivered twice, never, or out of
   order. This is where several production incidents here actually came from.
+- Cross-ACTION collisions. Every collision wave is currently one action many
+  times. The blackout race — closing a date while somebody books onto it — needs
+  two different actions contending for one resource, and BBF's day lock covers
+  a case Shoal cannot yet generate.
 - A UI driver. Everything above is the API surface; the silent-blank-row class
   needs a browser.

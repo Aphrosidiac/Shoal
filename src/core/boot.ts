@@ -30,6 +30,32 @@ export function readDotEnv(path: string): Record<string, string> {
   return out
 }
 
+/**
+ * Wait until the port is (or is not) answering.
+ *
+ * `expectOpen: false` is the one that matters: it is the difference between a
+ * clean restart and a health check answered by the corpse of the last one.
+ */
+async function waitForPort(port: number, expectOpen: boolean, timeoutMs: number) {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    let open = false
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/api/health`, {
+        signal: AbortSignal.timeout(1000),
+      })
+      open = res.ok
+    } catch {
+      open = false
+    }
+    if (open === expectOpen) return
+    if (Date.now() > deadline) {
+      throw new Error(`port ${port} is still ${open ? 'in use' : 'closed'} after ${timeoutMs}ms`)
+    }
+    await new Promise((r) => setTimeout(r, 200))
+  }
+}
+
 export interface Booted {
   proc: ChildProcess
   stop: () => Promise<void>
@@ -59,7 +85,19 @@ export async function bootTarget(opts: {
   }
 
   const stderr: string[] = []
-  const proc = spawn('npx', ['tsx', opts.entry], { cwd: opts.root, env, stdio: ['ignore', 'pipe', 'pipe'] })
+  // Detached, so the whole process group can be killed together.
+  //
+  // `npx tsx` is a wrapper around a node child. SIGTERM to the wrapper leaves
+  // the child holding the port, and the NEXT boot's health check is answered
+  // by the previous target — which is by then pointed at a database the reset
+  // has dropped. It presents as a 500 on login, minutes into a reduction, and
+  // says nothing about ports.
+  const proc = spawn('npx', ['tsx', opts.entry], {
+    cwd: opts.root,
+    env,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    detached: true,
+  })
   const keep = (chunk: Buffer) => {
     const s = chunk.toString()
     stderr.push(s)
@@ -68,6 +106,8 @@ export async function bootTarget(opts: {
   }
   proc.stdout?.on('data', keep)
   proc.stderr?.on('data', keep)
+
+  await waitForPort(opts.port, false, 15_000)
 
   const deadline = Date.now() + 60_000
   for (;;) {
@@ -84,13 +124,29 @@ export async function bootTarget(opts: {
     await new Promise((r) => setTimeout(r, 250))
   }
 
-  const stop = () =>
-    new Promise<void>((resolve) => {
-      if (proc.exitCode !== null) return resolve()
-      proc.once('exit', () => resolve())
-      proc.kill('SIGTERM')
-      setTimeout(() => proc.kill('SIGKILL'), 4000).unref()
-    })
+  const killGroup = (signal: NodeJS.Signals) => {
+    try {
+      if (proc.pid) process.kill(-proc.pid, signal)
+    } catch {
+      /* already gone */
+    }
+  }
+
+  const stop = async () => {
+    if (proc.exitCode === null) {
+      await new Promise<void>((resolve) => {
+        proc.once('exit', () => resolve())
+        killGroup('SIGTERM')
+        setTimeout(() => {
+          killGroup('SIGKILL')
+          resolve()
+        }, 4000).unref()
+      })
+    }
+    // Waiting on the process is not enough — the port is what the next boot
+    // collides with, so wait on the port.
+    await waitForPort(opts.port, false, 10_000)
+  }
 
   return { proc, stop, stderr }
 }

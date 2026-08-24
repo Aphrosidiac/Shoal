@@ -172,6 +172,24 @@ export const actions: Action[] = [
     // inside the transaction is what stands between this and an overbooked
     // window; a collision wave is the only thing that exercises it.
     collidable: true,
+    // Shared-resource contention, not same-row: DIFFERENT jobs, ONE window.
+    // Pointing every actor at the same delivery books one job five times and
+    // proves nothing about capacity.
+    collideVariants: (w, rng, actors) => {
+      const slotId = pick(rng, w.slots)
+      const date = pick(rng, w.dates)
+      if (!slotId || !date) return null
+      // The tail of the list, because a delivery that has been in the world a
+      // while has usually been advanced out of PLANNING by someone and can no
+      // longer be booked — every scheduling call in the first run was a 400
+      // for that reason, which reads as "found nothing".
+      const pool = w.deliveries.slice(-14)
+      const chosen: string[] = []
+      while (chosen.length < actors && pool.length) {
+        chosen.push(...pool.splice(Math.floor(rng() * pool.length), 1))
+      }
+      return chosen.length < 2 ? null : chosen.map((id) => ({ id, slotId, date }))
+    },
     pick: (w, rng) => {
       const id = pick(rng, w.deliveries)
       const slotId = pick(rng, w.slots)
@@ -185,7 +203,9 @@ export const actions: Action[] = [
   {
     name: 'advance-delivery-status',
     roles: LOGI_ROLES,
-    weight: 6,
+    // Deliberately below create and schedule. Advancing jobs faster than they
+    // are booked empties the pool of anything schedulable.
+    weight: 3,
     collidable: true,
     pick: (w, rng) => {
       const id = pick(rng, w.deliveries)
