@@ -244,6 +244,21 @@ export function cachedAggregateMatchesRows(opts: {
   foreignKey: string
   /** Column to sum, or omit to count rows. */
   sum?: string
+  /**
+   * SQL summed instead of a bare column, for a child that carries its parts
+   * rather than its product — `"unitPrice" * quantity` rather than a `total`.
+   */
+  expression?: string
+  /**
+   * Parent columns that were ADDED to the lines to reach the cached figure —
+   * tax, postage. To recover the lines they are taken back off.
+   */
+  plus?: string[]
+  /**
+   * Parent columns that were SUBTRACTED from the lines — a discount, a credit.
+   * To recover the lines they are added back on.
+   */
+  less?: string[]
   /** Extra condition on the child rows, without the WHERE. */
   where?: string
   /** How far apart the two may drift before it counts. Default one hundredth. */
@@ -252,7 +267,23 @@ export function cachedAggregateMatchesRows(opts: {
   label?: string
 }): SqlSounding {
   const q = (name: string) => (name.includes('"') ? name : `"${name}"`)
-  const agg = opts.sum ? `COALESCE(SUM(c.${q(opts.sum)}), 0)` : 'COUNT(c.id)'
+  // Three shapes, because four systems used three. A column to add up, an
+  // expression to add up when the child stores its parts, or a count when
+  // the cache is a tally rather than a total.
+  const summed = opts.expression
+    ? opts.expression.replace(/\$c\./g, 'c.')
+    : opts.sum
+      ? `c.${q(opts.sum)}`
+      : null
+  const agg = summed ? `COALESCE(SUM(${summed}), 0)` : 'COUNT(c.id)'
+  // Adjustments live on the PARENT — a total is its lines plus tax less a
+  // discount, and comparing the raw cache against the raw sum reports every
+  // taxed document as broken.
+  const adjusted = [
+    `p.${q(opts.cached)}`,
+    ...(opts.plus ?? []).map((n) => `- COALESCE(p.${q(n)}, 0)`),
+    ...(opts.less ?? []).map((n) => `+ COALESCE(p.${q(n)}, 0)`),
+  ].join(' ')
   const label = opts.label ? `p.${q(opts.label)},` : ''
   const filter = opts.where ? ` AND (${opts.where})` : ''
   return {
@@ -263,8 +294,8 @@ export function cachedAggregateMatchesRows(opts: {
       SELECT p.id, ${label} p.${q(opts.cached)} AS cached, ${agg} AS actual
         FROM ${q(opts.parent)} p
         LEFT JOIN ${q(opts.child)} c ON c.${q(opts.foreignKey)} = p.id${filter}
-       GROUP BY p.id, ${label} p.${q(opts.cached)}
-      HAVING ABS(p.${q(opts.cached)} - ${agg}) > ${opts.tolerance ?? 0.005}`,
+       GROUP BY p.id, ${label} ${[`p.${q(opts.cached)}`, ...(opts.plus ?? []), ...(opts.less ?? [])].map((n) => (n.startsWith('p.') ? n : `p.${q(n)}`)).join(', ')}
+      HAVING ABS((${adjusted}) - ${agg}) > ${opts.tolerance ?? 0.005}`,
   }
 }
 

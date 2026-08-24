@@ -69,6 +69,40 @@ real instrument on day one, before a single domain rule exists.
 Plus one the engine does for free: any 5xx is a server fault, because a wrong
 request is a 4xx and anything else is the server admitting fault.
 
+## Misbehaving at the edges
+
+A large share of the incidents behind this tool came from the boundary, not the
+core — a callback delivered twice, a channel dead while the process manager
+showed green, a payment confirmation that never arrived. None of it is
+reachable by driving a system's own routes politely, because the system is not
+the one behaving badly.
+
+`webhookAction` behaves badly on the provider's behalf. Four modes, each
+matching something a real provider does:
+
+| Mode | Because |
+|---|---|
+| `fresh` | the control |
+| `duplicate` | every provider retries, and a retry of something already processed must be a no-op |
+| `late` | an event stamped in the past, arriving after newer ones |
+| `malformed` | a truncated payload must be a 4xx; a 5xx is the server blaming itself for someone else's mistake, and it is how a retry storm starts |
+
+What is **not** there, and cannot be: an event that never arrives. Absence is
+not something an action can send.
+
+That case is tested by a sounding instead, and only the target can write it,
+because only the target knows what the fallback is:
+
+```sql
+SELECT id FROM things_awaiting_confirmation
+ WHERE handed_to_provider_at < now() - interval '1 hour'
+   AND status = 'still waiting'
+```
+
+If the only thing that moves that row is the provider's callback, this is the
+sounding that tells you the day it stops arriving. It will, and without this
+nobody notices for weeks.
+
 `noOrphanedRows` is vacuous where the database enforces its own keys, and says
 so — it earns its place on `relationMode = "prisma"`, PlanetScale, sharded
 schemas, and anywhere a migration dropped a constraint nobody replaced.
@@ -461,10 +495,9 @@ instead, it will agree with the bug it was supposed to catch.
 
 ## Not yet
 
-- **Fault injection beyond duplication.** A webhook can be delivered twice; it
-  cannot yet arrive out of order, arrive six weeks late, or not arrive at all.
-  A callback that never fires is a live open issue on another system here, and
-  Shoal could not currently find it.
+- **Faults beyond the webhook.** A provider can be made to retry, arrive late
+  or send rubbish. It cannot yet be made to time out, hang, or answer slowly,
+  and a handler that blocks on a slow provider is a whole class of outage.
 - **The browser only looks.** It logs in and reads. It does not fill a form,
   submit it, or race another actor from the UI.
 - **`shoal init`.** Two thirds of writing a target is mechanical, and every
