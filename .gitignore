@@ -3,3 +3,4 @@ charts/*
 !charts/.gitkeep
 *.log
 .DS_Store
+shoal.local.json

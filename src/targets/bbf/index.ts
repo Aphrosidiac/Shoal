@@ -14,8 +14,9 @@ import { pick } from '../../core/rng.js'
 import { actions, boundaryActions } from './actions.js'
 import { soundings } from './soundings.js'
 import { uiProbe } from './probes-ui.js'
+import { secretsFor } from '../../core/secrets.js'
 
-const PASSWORD = '<moved to shoal.local.json>'
+const { password: PASSWORD, emailDomain: DOMAIN } = secretsFor('bbf')
 
 /**
  * Operational personas, not demographic ones.
@@ -27,27 +28,27 @@ const PASSWORD = '<moved to shoal.local.json>'
 export const personas: Persona[] = [
   {
     name: 'sales-jb',
-    email: 'dus@<target domain>',
+    email: `dus@${DOMAIN}`,
     role: 'SALES',
     bias: { 'create-quotation': 2, 'convert-quotation': 1.5, 'create-delivery': 0 },
   },
   {
     name: 'sales-pj',
-    email: 'pjs@<target domain>',
+    email: `pjs@${DOMAIN}`,
     role: 'SALES',
     // The other showroom, quoting into the same month prefix at the same time.
     bias: { 'create-quotation': 2, 'record-payment': 0.5 },
   },
   {
     name: 'office',
-    email: 'office@<target domain>',
+    email: `office@${DOMAIN}`,
     role: 'ADMIN',
     // The one who takes the money in. Heaviest on payments by design.
     bias: { 'record-payment': 3, 'create-invoice': 1.5, 'edit-doc-lines': 1.5, 'create-quotation': 0.3 },
   },
   {
     name: 'planner',
-    email: 'logistics@<target domain>',
+    email: `logistics@${DOMAIN}`,
     role: 'LOGISTICS',
     // Four tabs. With one, a collision wave for a delivery window musters two
     // actors against a capacity of four and the window cannot be overbooked
@@ -57,7 +58,7 @@ export const personas: Persona[] = [
   },
   {
     name: 'manager',
-    email: 'admin@<target domain>',
+    email: `admin@${DOMAIN}`,
     role: 'MANAGER',
     // Ungated, and therefore the only actor who can reach both halves of the
     // system in one wave.
@@ -182,7 +183,7 @@ export const bbf: Target = {
   soundings,
   collisionGroups,
   seasonBias,
-  uiProbe: ({ url }) => uiProbe({ url, email: 'admin@<target domain>', password: PASSWORD, enabled: true }),
+  uiProbe: ({ url }) => uiProbe({ url, email: `admin@${DOMAIN}`, password: PASSWORD, enabled: true }),
   survey,
 }
 

@@ -1,0 +1,6 @@
+{
+  "bbf": {
+    "password": "the shared password the target's seed sets on its accounts",
+    "emailDomain": "example.com"
+  }
+}
