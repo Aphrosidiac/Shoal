@@ -13,6 +13,7 @@ export interface Chart {
   starved?: { action: string; attempts: number }[]
   throttled?: number
   degraded?: { action: string; attempts: number; succeeded: number; reason: string }[]
+  unexercised?: string[]
   log: LogEntry[]
   minimised?: LogEntry[]
   reproductionRate?: string
@@ -38,6 +39,17 @@ export function writeChart(dir: string, chart: Chart, soundings: Sounding[]) {
       'about them — a swarm turned away at the door looks exactly like a swarm finding nothing.',
       '',
       ...chart.starved.map((s) => `- \`${s.action}\` — ${s.attempts} attempts, 0 succeeded`),
+      '',
+    )
+  }
+
+  if (chart.unexercised?.length) {
+    lines.push(
+      '## Never attempted',
+      '',
+      'The swarm did not try these once, so nothing here is a claim about them.',
+      '',
+      ...chart.unexercised.map((a) => `- \`${a}\``),
       '',
     )
   }

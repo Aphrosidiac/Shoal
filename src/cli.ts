@@ -19,6 +19,9 @@ import { runVoyage } from './core/voyage.js'
 import type { Action, LogEntry, ProbeContext, Session, Target, World, Violation } from './core/types.js'
 import { sweepAll } from './core/sound.js'
 import { buildFrontend, serveDist } from './core/webserve.js'
+import { scanTarget } from './scaffold/scan.js'
+import { introspect } from './scaffold/introspect.js'
+import { alreadyThere, configStub, emitTarget } from './scaffold/emit.js'
 import { configFor, required } from './core/config.js'
 import type { TargetFactory } from './target/define.js'
 import { replayLog } from './triage/replay.js'
@@ -142,7 +145,7 @@ async function rig(t: Target, quiet: boolean): Promise<Rig> {
       // re-authenticate. Logging in per session multiplied the calls by the tab
       // count and walked straight into a login route that allows five a minute,
       // so the swarm could not start at all.
-      const token = p.anonymous ? '' : await login(url, p.email, t.password, t.auth)
+      const token = p.anonymous ? '' : await login(url, p.email, p.password ?? t.password, t.auth)
       for (let i = 0; i < copies; i++) {
         sessions.push({
           // The suffix only appears when there is more than one, so a
@@ -271,6 +274,7 @@ async function cmdRun() {
       serverFaults: result.serverFaults,
       starved: result.starved,
       degraded: result.degraded,
+      unexercised: result.unexercised,
       throttled: result.throttled,
       log: result.log,
     }
@@ -361,6 +365,10 @@ function report(chart: Chart) {
     console.log(`  STARVED  "${s.action}" was refused all ${s.attempts} times it was tried`)
     console.log(`           nothing this voyage says about it means anything`)
   }
+  if (chart.unexercised?.length) {
+    console.log(`  UNTOUCHED  never attempted: ${chart.unexercised.join(', ')}`)
+    console.log(`             this voyage says nothing about them`)
+  }
   for (const d of chart.degraded ?? []) {
     console.log(`  DEGRADED   "${d.action}" succeeded ${d.succeeded} of ${d.attempts} times`)
     if (d.reason) console.log(`             mostly: ${d.reason}`)
@@ -377,6 +385,92 @@ function report(chart: Chart) {
     const routes = new Set(chart.serverFaults.map((f) => f.action))
     console.log(`  FAULT    ${chart.serverFaults.length} server fault(s) across ${routes.size} action(s)`)
   }
+}
+
+/**
+ * Drafts a target from a system's own files.
+ *
+ * Two thirds of describing a system needs no judgment, and across three
+ * targets written by hand every single mistake was in that two thirds — a
+ * health path assumed rather than read, a login shape guessed, rate limits
+ * discovered by being throttled. This does the two thirds and marks the rest,
+ * rather than filling it in plausibly. A plausible default in a checking tool
+ * is worse than a hole, because a hole is visible.
+ */
+async function cmdInit() {
+  const root = resolve(positional[0] ?? '.')
+  const name = flag('name') ?? root.split('/').filter(Boolean).slice(-2, -1)[0]?.toLowerCase() ?? 'target'
+  const outDir = join(ROOT, 'targets', name)
+
+  if (alreadyThere(outDir) && !has('force')) {
+    throw new Error(`targets/${name} already exists — pass --force to overwrite the draft`)
+  }
+
+  console.log(`\n  reading ${root}\n`)
+  const scan = scanTarget(root)
+
+  const env = readDotEnv(join(root, '.env'))
+  const url = env.DATABASE_URL
+  if (!url) throw new Error(`no DATABASE_URL in ${join(root, '.env')} — nothing to introspect`)
+  const sourceDb = new URL(url.replace(/\?.*$/, '')).pathname.replace(/^\//, '')
+  const db = await introspect(url)
+
+  const port = num('port', 3930)
+  const built = emitTarget({ name, root, outDir, port, sourceDb, scan, db })
+
+  const known = (label: string, value: unknown) =>
+    console.log(`    ${label.padEnd(16)} ${value === undefined || value === '' ? '— not found' : String(value)}`)
+
+  console.log('  read out of the target:')
+  known('entry', scan.entry)
+  known('database', sourceDb)
+  known('health path', scan.healthPath)
+  known('login path', scan.loginPath)
+  known('roles', scan.roles.join(', '))
+  known('routes', `${scan.routes.length} (${built.actions} drafted as actions)`)
+  known('tables', db.tables.length)
+  known('blanked keys', scan.channelKeys.length)
+  if (scan.tightestLimit) {
+    const { max, window, path } = scan.tightestLimit
+    // Getting this wrong wasted two voyages: an unpaced swarm against a rate
+    // limited route is several hundred 429s, which reads like finding nothing.
+    //
+    // A wave is not one request. Several actors act at once and a sweep adds
+    // its own reads, so the gap has to cover the whole wave — roughly six
+    // requests is what four actors plus probes came to in practice.
+    const perMin = /hour/i.test(window) ? max / 60 : /second/i.test(window) ? max * 60 : max
+    const pace = Math.max(Math.ceil((60_000 / perMin) * 6), 1000)
+    known('tightest limit', `${max} per ${window} on ${path}`)
+    known('suggested pace', `--pace ${pace}   (about six requests a wave; raise it if a run reports throttling)`)
+  }
+
+  const likely = db.candidates.filter((c) => c.confidence === 'likely')
+  console.log(
+    `\n  ${db.candidates.length} soundings proposed from the schema, all commented out ` +
+      `(${likely.length} worth reading first):`,
+  )
+  for (const c of likely.slice(0, 8)) console.log(`    [${c.kind}] ${c.detail}`)
+  const rest = db.candidates.length - Math.min(likely.length, 8)
+  if (rest > 0) console.log(`    … and ${rest} more, most of them noise — the schema cannot tell which`)
+
+  console.log(`\n  wrote targets/${name}/{${built.files.join(', ')}}`)
+  console.log(`\n  add this to shoal.local.json:\n`)
+  console.log(
+    JSON.stringify(configStub(name, root, scan.roles), null, 2)
+      .split('\n')
+      .map((l) => `    ${l}`)
+      .join('\n'),
+  )
+  console.log(`
+  Then, in order:
+    1. fill in the TODOs in targets/${name}/index.ts — personas, survey, requiresWorld
+    2. give the actions arguments and weights, and decide what contends
+    3. read the proposed soundings, keep the ones the business actually has,
+       and write each \`because\` from the business rather than from the code
+    4. npm run shoal -- doctor ${name}
+
+  Step 3 is the product. The rest is delivery.
+`)
 }
 
 async function cmdReplay() {
@@ -456,6 +550,7 @@ async function cmdDoctor() {
 }
 
 const commands: Record<string, () => Promise<void>> = {
+  init: cmdInit,
   run: cmdRun,
   replay: cmdReplay,
   soundings: cmdSoundings,
@@ -464,7 +559,7 @@ const commands: Record<string, () => Promise<void>> = {
 
 const fn = commands[command ?? '']
 if (!fn) {
-  console.log(`\n  shoal <run|replay|soundings|doctor> [target] [flags]\n`)
+  console.log(`\n  shoal <init|run|replay|soundings|doctor> [target|path] [flags]\n`)
   process.exit(2)
 }
 fn().catch((e) => {

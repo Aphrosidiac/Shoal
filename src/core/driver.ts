@@ -36,6 +36,25 @@ export async function call(
   return { status: res.status, body: parsed, ms: Math.round(performance.now() - started) }
 }
 
+/**
+ * Where a token usually sits.
+ *
+ * Four systems, three shapes. Two of the four wrapped the reply as
+ * `{ success, data: { token } }`, which is common enough that requiring every
+ * target to configure it is just a way of making the first voyage fail. A
+ * target with an unusual shape still says so explicitly.
+ */
+function defaultToken(body: any): string | undefined {
+  const found =
+    body?.token ??
+    body?.data?.token ??
+    body?.accessToken ??
+    body?.data?.accessToken ??
+    body?.jwt ??
+    body?.data?.jwt
+  return typeof found === 'string' ? found : undefined
+}
+
 export interface AuthShape {
   path?: string
   token?(body: any): string | undefined
@@ -78,7 +97,7 @@ export async function login(
       continue
     }
 
-    const token = auth.token ? auth.token(body) : body?.token
+    const token = auth.token ? auth.token(body) : defaultToken(body)
     if (!res.ok || !token) {
       throw new Error(`login failed for ${email} at ${path}: ${res.status} ${JSON.stringify(body).slice(0, 200)}`)
     }

@@ -85,7 +85,35 @@ written from the schema, which is the implementation, which is the one thing a
 sounding must not be derived from. Leave it blank and refuse to run until it is
 filled in.
 
-## What three targets taught the engine
+## Measured: what the scaffolder actually saved
+
+`shoal init` was then run against a fourth system nobody had described — a food
+delivery kitchen — and the draft finished by hand.
+
+**Read correctly, first time, with no help:** entry point, database name, health
+path, the login path *with its prefix applied*, all three roles, 158 routes of
+which 18 were drafted as action stubs with correct methods and paths, 29 tables,
+10 outbound keys to blank, and 12 candidate soundings ranked so the 4 worth
+reading came first.
+
+**Wrong, and each one now fixed in the generator:** the login path was emitted
+without its prefix; the world type came out with a lowercase name so the draft
+did not compile; every foreign key became a cached-aggregate candidate, most of
+them nonsense; and the rate limit was missed entirely because it is registered
+app-wide rather than per route — which cost a voyage that came back 58%
+throttled.
+
+**Left to a person, as intended:** which actions matter, what contends with
+what, the survey, and every `because`. That was the whole of the remaining
+work, and it is the whole of the value.
+
+Two more engine gaps surfaced doing it: a system can seed different passwords
+for different roles, which one target-wide password could not express; and two
+of four systems wrap the login reply as `{ success, data: { token } }`, which is
+common enough that the default now probes for it rather than making the first
+voyage fail.
+
+## What four targets taught the engine
 
 Recorded because each was invisible from the target before it:
 
@@ -95,8 +123,11 @@ Recorded because each was invisible from the target before it:
 | Target 2 | a failed boot leaked the process; a target could not set the booted environment |
 | Target 3 | every persona had to authenticate — a public checkout could not be modelled at all |
 | Target 3 | starvation only fired at zero success, so an action succeeding one time in four printed as "nothing tripped" |
+| Target 4 | one password per target; the login envelope; an action attempted ZERO times was invisible to both the starvation and degradation checks |
 
-The last one is the sharpest. A storefront whose checkout fails three times in
-four was reported as a clean voyage, because the failures were well-mannered
-4xx refusals and no sounding covered "the shop works". Success rate is a
-measurement, and it was not being taken.
+The pattern is the same one every time: the engine could not tell the
+difference between "this held up" and "this was never tested". A storefront
+whose checkout failed three times in four read as a clean voyage. An action the
+swarm never once attempted read as a clean voyage. Both are now reported above
+the verdict, alongside throttling, because a summary that only counts
+violations is confident about exactly the things it did not measure.

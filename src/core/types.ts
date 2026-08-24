@@ -96,6 +96,14 @@ export interface Persona {
    * one page thousands of strangers press at once.
    */
   anonymous?: boolean
+  /**
+   * Overrides the target's password for this persona.
+   *
+   * Not every system gives every role the same credential — one here seeds
+   * administrators and staff with two different ones, which a single
+   * target-wide password cannot express.
+   */
+  password?: string
   /** Multiplies an action's base weight. 0 removes it from this persona. */
   bias: Record<string, number>
 }

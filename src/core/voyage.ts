@@ -81,6 +81,16 @@ export interface VoyageResult {
    * same order number), and only the reason distinguishes them.
    */
   degraded: { action: string; attempts: number; succeeded: number; reason: string }[]
+  /**
+   * Actions the swarm never even tried.
+   *
+   * Neither of the checks above can see this: starvation counts refusals and
+   * degradation counts failures, and an action attempted zero times has
+   * neither. It happens when a weight is too low, a role too rare, or a `pick`
+   * that never finds anything to act on — and the result is a voyage that says
+   * nothing at all about part of the system while looking complete.
+   */
+  unexercised: string[]
 }
 
 /** One wave's worth of decisions, made before anything is dispatched. */
@@ -248,10 +258,12 @@ export async function runVoyage(
   const commonest = (action: string) =>
     [...(reasons.get(action) ?? new Map()).entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? ''
 
+  const unexercised = actions.map((a) => a.name).filter((name) => !attempts.has(name))
+
   const degraded = [...attempts.entries()]
     .filter(([, a]) => a.n >= 8 && a.ok > 0 && a.ok / a.n < 0.5)
     .map(([action, a]) => ({ action, attempts: a.n, succeeded: a.ok, reason: commonest(action) }))
 
   const throttled = log.filter((e) => e.status === 429).length
-  return { log, violations, serverFaults, waves: season + opts.waves, starved, degraded, throttled }
+  return { log, violations, serverFaults, waves: season + opts.waves, starved, degraded, unexercised, throttled }
 }
