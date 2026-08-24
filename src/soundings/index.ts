@@ -6,5 +6,12 @@
  * the ones nobody can write for you — go in the target's own soundings file,
  * and that is where the value is.
  */
-export { pagingIsStable, listingMatchesCount, roleGating, frozenAfter, noOrphanedRows } from './generic.js'
+export {
+  pagingIsStable,
+  listingMatchesCount,
+  roleGating,
+  frozenAfter,
+  noOrphanedRows,
+  cachedAggregateMatchesRows,
+} from './generic.js'
 export { screenAgreesWithTheDatabase, type PageCheck, type BrowserOptions } from './browser.js'

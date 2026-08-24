@@ -18,7 +18,10 @@ export async function call(
   const res = await fetch(`${s.base}${path}`, {
     method,
     headers: {
-      authorization: `Bearer ${s.token}`,
+      // An anonymous actor sends no credential at all, rather than an empty
+      // bearer — some servers treat a malformed Authorization header as a
+      // failed login rather than as no login.
+      ...(s.token ? { authorization: `Bearer ${s.token}` } : {}),
       ...(body === undefined ? {} : { 'content-type': 'application/json' }),
     },
     body: body === undefined ? undefined : JSON.stringify(body),

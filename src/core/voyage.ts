@@ -70,6 +70,17 @@ export interface VoyageResult {
    * NOTHING about delivery booking, and must not be read as though it had.
    */
   starved: { action: string; attempts: number }[]
+  /**
+   * Actions that mostly failed without failing entirely.
+   *
+   * Starvation only fires at zero, and a swarm whose checkout succeeds one
+   * time in four is not starved — it is telling you something, and this used
+   * to print as "nothing tripped". Reported with the commonest refusal rather
+   * than as a verdict: a low success rate can be the target correctly refusing
+   * (no stock left) or the target falling over (two checkouts computing the
+   * same order number), and only the reason distinguishes them.
+   */
+  degraded: { action: string; attempts: number; succeeded: number; reason: string }[]
 }
 
 /** One wave's worth of decisions, made before anything is dispatched. */
@@ -227,6 +238,20 @@ export async function runVoyage(
     .filter(([, a]) => a.n >= 5 && a.ok === 0)
     .map(([action, a]) => ({ action, attempts: a.n }))
 
+  const reasons = new Map<string, Map<string, number>>()
+  for (const e of log) {
+    if (e.status < 400 || !e.note) continue
+    const per = reasons.get(e.action) ?? new Map<string, number>()
+    per.set(e.note, (per.get(e.note) ?? 0) + 1)
+    reasons.set(e.action, per)
+  }
+  const commonest = (action: string) =>
+    [...(reasons.get(action) ?? new Map()).entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? ''
+
+  const degraded = [...attempts.entries()]
+    .filter(([, a]) => a.n >= 8 && a.ok > 0 && a.ok / a.n < 0.5)
+    .map(([action, a]) => ({ action, attempts: a.n, succeeded: a.ok, reason: commonest(action) }))
+
   const throttled = log.filter((e) => e.status === 429).length
-  return { log, violations, serverFaults, waves: season + opts.waves, starved, throttled }
+  return { log, violations, serverFaults, waves: season + opts.waves, starved, degraded, throttled }
 }

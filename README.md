@@ -62,6 +62,7 @@ real instrument on day one, before a single domain rule exists.
 | `listingMatchesCount` | a list quietly showing fewer rows than the table holds |
 | `roleGating` | a route answered for a role never granted it — and a role locked out of its own job |
 | `frozenAfter` | fields that must stop changing once a row is issued, rewritten later |
+| `cachedAggregateMatchesRows` | a denormalised figure drifting from the rows it caches |
 | `noOrphanedRows` | references to parents that are not there, read from the FK catalogue |
 | `screenAgreesWithTheDatabase` | a page that renders blank over a table full of rows |
 
@@ -342,7 +343,7 @@ twice in a voyage and none walked DRAFT → SENT → ACCEPTED.
 
 Every one of those looked exactly like a passing test.
 
-## The second target, and what it cost
+## Second and third targets, and what they cost
 
 An abstraction with one implementation is a guess. Pointing Shoal at a second,
 unrelated system — a different domain, a different codebase generation, a
@@ -363,7 +364,18 @@ between boot and login leaked the booted process, so the next run found its port
 held by a server pointed at a dropped database; and a target's own environment
 could not be set, which a Redis-backed rate limiter made necessary.
 
-None of that was visible from one system. All of it looked like design.
+A third target — a storefront rather than a back office — found two more. Every
+persona had to authenticate, so a public checkout could not be modelled at all,
+which is the one page thousands of strangers press at the same moment. And
+starvation only fired at zero success, so an action succeeding one time in four
+printed as "nothing tripped".
+
+None of that was visible from the system before it. All of it looked like design.
+
+`cachedAggregateMatchesRows` came out of the same process in the other
+direction: written by hand three times, against three schemas, under three
+different column names, before it was extracted. It could not have been designed
+from one instance and it is now the check that has found the most real money.
 
 ### What it found there
 
@@ -455,9 +467,13 @@ instead, it will agree with the bug it was supposed to catch.
   Shoal could not currently find it.
 - **The browser only looks.** It logs in and reads. It does not fill a form,
   submit it, or race another actor from the UI.
-- **A third target.** Two systems have been described, which is enough to have
-  found six things welded to the first and not enough to claim the abstraction
-  is right.
+- **`shoal init`.** Two thirds of writing a target is mechanical, and every
+  mistake made across three of them was in that two thirds. See
+  [docs/target-authoring.md](docs/target-authoring.md) for what a generator
+  should and should not produce.
+- **A fourth target.** Three systems have been described. Each of the last two
+  found things welded to the ones before it, so the rate of discovery has not
+  fallen off yet.
 - **Anything but Postgres and HTTP.** The reset is a Postgres template clone and
   the driver speaks HTTP. Neither is deep in the design; both are the only thing
   that has been tried.

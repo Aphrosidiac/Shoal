@@ -12,6 +12,7 @@ export interface Chart {
   serverFaults: LogEntry[]
   starved?: { action: string; attempts: number }[]
   throttled?: number
+  degraded?: { action: string; attempts: number; succeeded: number; reason: string }[]
   log: LogEntry[]
   minimised?: LogEntry[]
   reproductionRate?: string
@@ -37,6 +38,21 @@ export function writeChart(dir: string, chart: Chart, soundings: Sounding[]) {
       'about them — a swarm turned away at the door looks exactly like a swarm finding nothing.',
       '',
       ...chart.starved.map((s) => `- \`${s.action}\` — ${s.attempts} attempts, 0 succeeded`),
+      '',
+    )
+  }
+
+  if (chart.degraded?.length) {
+    lines.push(
+      '## Mostly refused',
+      '',
+      'These succeeded sometimes. That can be the target correctly refusing, or the target',
+      'falling over — the reason tells you which, and a summary that only counted violations',
+      'would have shown neither.',
+      '',
+      ...chart.degraded.map(
+        (d) => `- \`${d.action}\` — ${d.succeeded}/${d.attempts} succeeded${d.reason ? ` · mostly: ${d.reason}` : ''}`,
+      ),
       '',
     )
   }

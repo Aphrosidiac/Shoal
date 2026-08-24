@@ -142,7 +142,7 @@ async function rig(t: Target, quiet: boolean): Promise<Rig> {
       // re-authenticate. Logging in per session multiplied the calls by the tab
       // count and walked straight into a login route that allows five a minute,
       // so the swarm could not start at all.
-      const token = await login(url, p.email, t.password, t.auth)
+      const token = p.anonymous ? '' : await login(url, p.email, t.password, t.auth)
       for (let i = 0; i < copies; i++) {
         sessions.push({
           // The suffix only appears when there is more than one, so a
@@ -270,6 +270,7 @@ async function cmdRun() {
       violations: result.violations,
       serverFaults: result.serverFaults,
       starved: result.starved,
+      degraded: result.degraded,
       throttled: result.throttled,
       log: result.log,
     }
@@ -359,6 +360,10 @@ function report(chart: Chart) {
   for (const s of chart.starved ?? []) {
     console.log(`  STARVED  "${s.action}" was refused all ${s.attempts} times it was tried`)
     console.log(`           nothing this voyage says about it means anything`)
+  }
+  for (const d of chart.degraded ?? []) {
+    console.log(`  DEGRADED   "${d.action}" succeeded ${d.succeeded} of ${d.attempts} times`)
+    if (d.reason) console.log(`             mostly: ${d.reason}`)
   }
   if (!chart.violations.length && !chart.serverFaults.length) {
     console.log(`  ${chart.log.length} actions. Nothing tripped.`)

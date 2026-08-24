@@ -13,7 +13,7 @@
  * instrument on the first day, and the domain invariants are what you add
  * afterwards.
  */
-import type { ProbeContext, ProbeSounding } from '../core/types.js'
+import type { ProbeContext, ProbeSounding, SqlSounding } from '../core/types.js'
 import { call } from '../core/driver.js'
 
 const rowsOf = (body: any, key: string): any[] => {
@@ -212,6 +212,59 @@ export function frozenAfter(opts: {
       }
       return bad
     },
+  }
+}
+
+/**
+ * A cached figure equals the rows it is a cache of.
+ *
+ * Extracted, not designed. It was written by hand three times against three
+ * unrelated systems before it earned this: an invoice's paid amount against
+ * its payment rows, twice under two different column names, and a discount
+ * code's use count against the orders that used it. The shape is always the
+ * same — a number kept on the parent so a list can be drawn without a join,
+ * and a set of child rows that is the actual truth.
+ *
+ * It is worth having because the failure is silent and the cache is what
+ * every screen reads. It is also, in practice, where the concurrency bugs
+ * are: a cache updated from a read that another transaction has already
+ * invalidated is the single commonest defect this tool has found.
+ */
+export function cachedAggregateMatchesRows(opts: {
+  id?: string
+  title: string
+  because: string
+  /** Table holding the cached figure. */
+  parent: string
+  /** The cached column, quoted as your schema spells it. */
+  cached: string
+  /** Table holding the truth. */
+  child: string
+  /** Column on the child pointing at the parent. */
+  foreignKey: string
+  /** Column to sum, or omit to count rows. */
+  sum?: string
+  /** Extra condition on the child rows, without the WHERE. */
+  where?: string
+  /** How far apart the two may drift before it counts. Default one hundredth. */
+  tolerance?: number
+  /** A readable identifier for the parent, for the evidence. */
+  label?: string
+}): SqlSounding {
+  const q = (name: string) => (name.includes('"') ? name : `"${name}"`)
+  const agg = opts.sum ? `COALESCE(SUM(c.${q(opts.sum)}), 0)` : 'COUNT(c.id)'
+  const label = opts.label ? `p.${q(opts.label)},` : ''
+  const filter = opts.where ? ` AND (${opts.where})` : ''
+  return {
+    id: opts.id ?? `cache-matches-rows:${opts.parent}.${opts.cached}`,
+    title: opts.title,
+    because: opts.because,
+    sql: `
+      SELECT p.id, ${label} p.${q(opts.cached)} AS cached, ${agg} AS actual
+        FROM ${q(opts.parent)} p
+        LEFT JOIN ${q(opts.child)} c ON c.${q(opts.foreignKey)} = p.id${filter}
+       GROUP BY p.id, ${label} p.${q(opts.cached)}
+      HAVING ABS(p.${q(opts.cached)} - ${agg}) > ${opts.tolerance ?? 0.005}`,
   }
 }
 

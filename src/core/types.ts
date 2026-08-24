@@ -86,6 +86,16 @@ export interface Persona {
    * for a person to work, and it is the honest way to raise the pressure.
    */
   instances?: number
+  /**
+   * Acts without logging in.
+   *
+   * Whole categories of system are driven mostly by people who have no
+   * account: a storefront checkout, a public booking form, a webhook. Shoal
+   * required every persona to authenticate, which made those unreachable —
+   * and they are exactly where the contention is, because a checkout is the
+   * one page thousands of strangers press at once.
+   */
+  anonymous?: boolean
   /** Multiplies an action's base weight. 0 removes it from this persona. */
   bias: Record<string, number>
 }
