@@ -5,7 +5,8 @@
  * not from what the code does. That distinction is the whole reliability of
  * the instrument. An invariant extracted from the implementation inherits the
  * implementation's misunderstandings and then agrees with them for ever — the
- * MTD formula in LewixPortal was wrong for four months under a test that
+ * payroll formula in a neighbouring system was wrong for four months under a
+ * test that
  * asserted `> 0 && < 130`, which the wrong answer satisfied.
  *
  * A row returned is a violation. An empty result is a pass.

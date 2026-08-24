@@ -21,6 +21,10 @@ export interface TargetSecrets {
   password: string
   /** Domain the persona local-parts hang off, e.g. "example.com". */
   emailDomain: string
+  /** Absolute path to the target's backend. Machine-specific, so not in the source. */
+  root: string
+  /** Absolute path to the target's frontend, when there is one to drive. */
+  webRoot?: string
 }
 
 const FILE = join(fileURLToPath(new URL('.', import.meta.url)), '../../shoal.local.json')
@@ -39,8 +43,9 @@ export function secretsFor(target: string): TargetSecrets {
     }
   }
   const found = cache?.[target]
-  if (!found?.password || !found?.emailDomain) {
-    throw new Error(`shoal.local.json has no complete entry for "${target}" (needs password and emailDomain)`)
+  if (!found) throw new Error(`shoal.local.json has no entry for target "${target}"`)
+  for (const field of ['password', 'emailDomain', 'root'] as const) {
+    if (!found[field]) throw new Error(`shoal.local.json is missing "${field}" for target "${target}"`)
   }
   return found
 }

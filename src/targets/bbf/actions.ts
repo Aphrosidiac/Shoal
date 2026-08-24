@@ -344,7 +344,8 @@ export const actions: Action[] = [
      * overbooked window with no race involved at all, so it trips
      * `slot-capacity` on almost every voyage and buries the findings that
      * needed concurrency to produce. Whether that is a defect in BBF or an
-     * accepted admin action is a question for Fakhrul, not for the swarm —
+     * accepted admin action is a question for the target's owner, not for the
+     * swarm —
      * turn it on with `--include parked` once the rest is quiet.
      */
     name: 'shrink-slot-capacity',

@@ -1,5 +1,7 @@
 {
   "bbf": {
+    "root": "/absolute/path/to/the/target/backend",
+    "webRoot": "/absolute/path/to/the/target/frontend",
     "password": "the shared password the target's seed sets on its accounts",
     "emailDomain": "example.com"
   }

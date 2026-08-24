@@ -1,13 +1,12 @@
 /**
- * BBFSystem — Big Brain's back office. The first target.
+ * A private back-office system: quotations, invoices, payments, deliveries.
+ * The first target, and the one every design decision here was tested against.
  *
  * Chosen because two of its races are already documented and fixed, so the
  * question "does this instrument work" has a known answer: point a voyage at
  * the commit before each fix and see whether it finds the bug WITHOUT being
  * told what to look for. See README, "Proving the instrument".
  */
-import { homedir } from 'node:os'
-import { join } from 'node:path'
 import type { CollisionGroup, Persona, Session, Target, World } from '../../core/types.js'
 import { call } from '../../core/driver.js'
 import { pick } from '../../core/rng.js'
@@ -16,7 +15,7 @@ import { soundings } from './soundings.js'
 import { uiProbe } from './probes-ui.js'
 import { secretsFor } from '../../core/secrets.js'
 
-const { password: PASSWORD, emailDomain: DOMAIN } = secretsFor('bbf')
+const { password: PASSWORD, emailDomain: DOMAIN, root: ROOT, webRoot: WEB_ROOT } = secretsFor('bbf')
 
 /**
  * Operational personas, not demographic ones.
@@ -172,12 +171,12 @@ const seasonBias: Record<string, number> = {
 
 export const bbf: Target = {
   name: 'bbf',
-  root: join(homedir(), 'Desktop/dev/BBFSystem/backend'),
+  root: ROOT,
   sourceDb: 'bbfsystem',
   workDb: 'bbfsystem_shoal',
   templateDb: 'bbfsystem_shoal_tpl',
   port: 3915,
-  web: { root: join(homedir(), 'Desktop/dev/BBFSystem/frontend'), port: 5915 },
+  ...(WEB_ROOT ? { web: { root: WEB_ROOT, port: 5915 } } : {}),
   personas,
   actions: [...actions, ...boundaryActions],
   soundings,

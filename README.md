@@ -6,10 +6,20 @@ Shoal points a swarm of concurrent actors at a running system, takes soundings
 after every wave, and charts what it ran aground on.
 
 It is not a test runner and it is not a fuzzer. Both of those already exist in
-the systems here and both are good at what they do. Shoal exists for the class
-of defect neither can reach: the one that needs **two people acting at the same
-moment**, or **a world that has been running for a while**, and that leaves no
-error behind when it happens.
+the systems it was built for and both are good at what they do. Shoal exists for
+the class of defect neither can reach: the one that needs **two people acting at
+the same moment**, or **a world that has been running for a while**, and that
+leaves no error behind when it happens.
+
+**What you can run.** The engine in `src/core` and `src/triage` is
+target-agnostic. The one bundled target, `bbf`, points at a private back-office
+system you do not have, so it is there as a worked example rather than something
+you can execute — read `src/targets/bbf/soundings.ts` first, because the
+soundings are the part worth copying. Adding your own target is three files;
+see below.
+
+Postgres-backed HTTP APIs only, at present. Nothing in the design assumes more
+than that, but nothing has proved it either.
 
 ## Why this and not another audit
 
@@ -112,6 +122,34 @@ Pretending otherwise would be the more comfortable lie and a useless tool.
 
 ```bash
 npm install
+```
+
+Then tell Shoal where the target is and how to log into it. Credentials and
+machine paths are deliberately not in the source — this repository is public,
+and a password committed to a repository does not become secret again when the
+visibility changes back.
+
+```bash
+cp shoal.local.example.json shoal.local.json
+```
+
+```json
+{
+  "bbf": {
+    "root": "/absolute/path/to/the/target/backend",
+    "webRoot": "/absolute/path/to/the/target/frontend",
+    "password": "the shared password the target's seed sets on its accounts",
+    "emailDomain": "example.com"
+  }
+}
+```
+
+`shoal.local.json` is gitignored and has no fallback: a built-in default would
+put the password back in the source and make the exercise decorative. Personas
+build their addresses from `emailDomain`, so the target is not named in the
+repository either. `webRoot` is optional and only needed for `--ui`.
+
+```bash
 npm run shoal -- doctor bbf
 ```
 
@@ -164,9 +202,9 @@ and is switched off within a month.
 
 ## The database
 
-A voyage never touches the target's own database. Shoal clones `bbfsystem` once
-into `bbfsystem_shoal_tpl` and re-creates `bbfsystem_shoal` from that template
-before every run — a file copy, about 200ms, and byte-identical every time,
+A voyage never touches the target's own database. Shoal reads the target's
+`DATABASE_URL` out of its `.env`, clones that database once into a template, and
+re-creates a working copy from the template before every run — a file copy, about 200ms, and byte-identical every time,
 which a reseed is not.
 
 The target is **not** started through its own `npm run dev`. That script passes
@@ -304,6 +342,14 @@ a customer sending two messages quickly produces two concurrent POSTs.
 - **`index.ts`** — personas, database names, port, and a `survey` that reads the
   starting world back off the API. The survey must run as an ungated role; a
   403 during setup looks exactly like an empty system.
+
+Register it in the `TARGETS` map in `src/cli.ts`, and give it an entry in
+`shoal.local.json` for the paths and the login. Anything machine-specific or
+secret belongs there and not in `index.ts`.
+
+Optional, and worth adding in this order once the basics work:
+`collisionGroups` for contention between two different actions, `seasonBias`
+for the build-up phase, and `uiProbe` for the browser.
 
 Personas are **operational**, not demographic. Role, competence, intent,
 environment and tenure change which code runs. "Ahmad, 34, likes coffee" does
