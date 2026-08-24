@@ -19,15 +19,46 @@ const money = (n: number) => Math.round(n * 100) / 100
 /** Records a document into the world the moment the API confirms it. */
 function remember(list: DocRef[], body: any) {
   const doc = body?.doc ?? body
-  if (doc?.id) list.push({ id: doc.id, docNo: doc.docNo ?? '', total: Number(doc.total ?? 0) })
+  if (doc?.id) {
+    list.push({ id: doc.id, docNo: doc.docNo ?? '', total: Number(doc.total ?? 0), status: doc.status ?? 'DRAFT' })
+  }
 }
+
+const findRef = (w: World, id: string) =>
+  w.quotations.find((d) => d.id === id) ?? w.invoices.find((d) => d.id === id)
+
+/**
+ * How a document moves, as the business moves it — enough to keep the swarm
+ * on paths that exist. One in five picks is deliberately off the path, because
+ * a request that ought to be refused is worth making.
+ */
+const QUOTE_NEXT: Record<string, string[]> = {
+  DRAFT: ['SENT', 'SENT', 'SENT', 'VOID'],
+  SENT: ['ACCEPTED', 'ACCEPTED', 'ACCEPTED', 'REJECTED', 'EXPIRED'],
+  REJECTED: ['SENT'],
+  EXPIRED: ['SENT'],
+}
+const INVOICE_NEXT: Record<string, string[]> = {
+  DRAFT: ['SENT', 'SENT', 'SENT', 'VOID'],
+  SENT: ['PARTIAL', 'PAID', 'VOID'],
+  PARTIAL: ['PAID'],
+}
+/** No outward edges anywhere. A document here is finished and picking it wastes the turn. */
+const TERMINAL = new Set(['VOID', 'PAID', 'CONVERTED'])
+const OFF_PATH = ['DRAFT', 'VOID', 'PAID', 'CONVERTED', 'ACCEPTED']
 
 export const actions: Action[] = [
   {
     name: 'create-customer',
     roles: SALES_ROLES,
     weight: 2,
-    pick: (_w, rng) => ({ name: `Shoal Customer ${int(rng, 1000, 9999)}`, phone: `01${int(rng, 10000000, 99999999)}` }),
+    // `companyName`, not `name` — every create was refused with "Customer name
+    // is required", which the starvation guard caught and a clean run would not
+    // have.
+    pick: (_w, rng) => ({
+      companyName: `Shoal Customer ${int(rng, 1000, 9999)}`,
+      phone: `01${int(rng, 10000000, 99999999)}`,
+    }),
     async run(s, args, w) {
       const out = await call(s, 'POST', '/api/customers', args)
       const id = out.body?.customer?.id ?? out.body?.id
@@ -103,12 +134,35 @@ export const actions: Action[] = [
     weight: 6,
     collidable: true,
     pick: (w, rng) => {
-      const doc = pick(rng, [...w.quotations, ...w.invoices])
+      // Split by type and drop the finished ones. Drawing uniformly from one
+      // combined pool left quotations stalled at SENT — nothing ever reached
+      // ACCEPTED, so convert-quotation was refused 26 times out of 26 and the
+      // whole conversion path went untested behind a clean-looking run.
+      const quotes = w.quotations.filter((d) => !TERMINAL.has(d.status))
+      const invoices = w.invoices.filter((d) => !TERMINAL.has(d.status))
+      const useQuote = quotes.length > 0 && (invoices.length === 0 || rng() < 0.5)
+      const pool = useQuote ? quotes : invoices
+      // Prefer a document already under way.
+      //
+      // Drawn uniformly, each of twenty documents gets picked well under twice
+      // in a voyage, so almost none walks DRAFT → SENT → ACCEPTED and the
+      // conversion path is never reached at all. A pipeline has to be pushed
+      // along, not poked at random.
+      const moving = pool.filter((d) => d.status !== 'DRAFT')
+      const doc = pick(rng, moving.length && rng() < 0.75 ? moving : pool)
       if (!doc) return null
-      const status = pick(rng, ['SENT', 'ACCEPTED', 'SENT', 'REJECTED', 'EXPIRED', 'VOID'])
+      const onPath = (useQuote ? QUOTE_NEXT : INVOICE_NEXT)[doc.status] ?? ['SENT']
+      const status = rng() < 0.8 ? pick(rng, onPath) : pick(rng, OFF_PATH)
       return { id: doc.id, status }
     },
-    run: (s, a) => call(s, 'PUT', `/api/sales-docs/${a.id}/status`, { status: a.status }),
+    async run(s, a, w) {
+      const out = await call(s, 'PUT', `/api/sales-docs/${a.id}/status`, { status: a.status })
+      if (out.status < 300) {
+        const ref = findRef(w, a.id)
+        if (ref) ref.status = out.body?.doc?.status ?? a.status
+      }
+      return out
+    },
   },
   {
     name: 'convert-quotation',
@@ -116,12 +170,19 @@ export const actions: Action[] = [
     weight: 4,
     collidable: true,
     pick: (w, rng) => {
-      const doc = pick(rng, w.quotations)
+      // Prefer one that can actually convert; fall back to any, because a
+      // refused convert is still worth issuing.
+      const ready = w.quotations.filter((d) => d.status === 'ACCEPTED')
+      const doc = pick(rng, ready.length ? ready : w.quotations)
       return doc ? { id: doc.id } : null
     },
     async run(s, a, w) {
       const out = await call(s, 'POST', `/api/quotations/${a.id}/convert`)
-      if (out.status < 300) remember(w.invoices, out.body)
+      if (out.status < 300) {
+        remember(w.invoices, out.body)
+        const ref = findRef(w, a.id)
+        if (ref) ref.status = 'CONVERTED'
+      }
       return out
     },
   },
@@ -223,10 +284,14 @@ export const actions: Action[] = [
     name: 'add-blackout',
     roles: LOGI_ROLES,
     weight: 2,
-    // Blacking out a date while somebody is booking onto it.
+    // Blacking out a date while somebody is booking onto it — see the
+    // blackout-vs-booking collision group, which is where the contention is
+    // actually generated. On its own this only ever consumes a spare date:
+    // closing one the swarm books into removes it permanently, and three of
+    // those closed an entire voyage out of the delivery half of the system.
     collidable: true,
-    pick: (w, rng) => {
-      const date = pick(rng, w.dates)
+    pick: (w) => {
+      const date = w.spareDates.shift()
       return date ? { date, reason: 'Shoal blackout' } : null
     },
     run: (s, a) => call(s, 'POST', '/api/logistics/blackouts', a),

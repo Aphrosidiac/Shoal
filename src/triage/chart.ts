@@ -10,6 +10,7 @@ export interface Chart {
   actors: number
   violations: Violation[]
   serverFaults: LogEntry[]
+  starved?: { action: string; attempts: number }[]
   log: LogEntry[]
   minimised?: LogEntry[]
   reproductionRate?: string
@@ -27,8 +28,25 @@ export function writeChart(dir: string, chart: Chart, soundings: Sounding[]) {
     '',
   ]
 
+  if (chart.starved?.length) {
+    lines.push(
+      '## Not exercised',
+      '',
+      'Every attempt at these was refused. Whatever else this chart says, it says nothing',
+      'about them — a swarm turned away at the door looks exactly like a swarm finding nothing.',
+      '',
+      ...chart.starved.map((s) => `- \`${s.action}\` — ${s.attempts} attempts, 0 succeeded`),
+      '',
+    )
+  }
+
   if (!chart.violations.length && !chart.serverFaults.length) {
-    lines.push('No soundings tripped and no server faults. Clear water on this seed.', '')
+    lines.push(
+      chart.starved?.length
+        ? 'Nothing tripped, but read the section above before treating that as clear water.'
+        : 'No soundings tripped and no server faults. Clear water on this seed.',
+      '',
+    )
   }
 
   for (const v of chart.violations) {

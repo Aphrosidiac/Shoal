@@ -10,9 +10,10 @@
  *
  * A row returned is a violation. An empty result is a pass.
  */
-import type { Sounding } from '../../core/types.js'
+import type { Sounding, SqlSounding } from '../../core/types.js'
+import { probes } from './probes.js'
 
-export const soundings: Sounding[] = [
+const state: SqlSounding[] = [
   {
     id: 'paid-matches-payments',
     title: 'paid_amt equals the sum of the payment rows',
@@ -160,3 +161,6 @@ export const soundings: Sounding[] = [
       HAVING SUM(di.qty) > i.qty + 0.005`,
   },
 ]
+
+/** State first, then the probes: SQL is cheap and probes cost round trips. */
+export const soundings: Sounding[] = [...state, ...probes]

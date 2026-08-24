@@ -16,9 +16,11 @@
  * generated for every action marked collidable, including the ones nobody
  * thought to suspect.
  */
-import type { Action, LogEntry, Persona, Rng, Session, Sounding, Violation, World } from './types.js'
+import type {
+  Action, CollisionGroup, LogEntry, Persona, ProbeContext, Rng, Session, Sounding, Violation, World,
+} from './types.js'
 import { pick, weighted } from './rng.js'
-import type { Soundings } from './db.js'
+import { sweepAll } from './sound.js'
 
 /** Every create route here answers with the row under one of these keys. */
 export function extractId(body: any): string | undefined {
@@ -30,6 +32,8 @@ export interface VoyageOpts {
   waves: number
   collideRate: number
   soundEvery: number
+  /** Share of collision waves given to a cross-action group, when any exist. */
+  groupRate?: number
   onWave?: (wave: number, log: LogEntry[]) => void
 }
 
@@ -38,6 +42,15 @@ export interface VoyageResult {
   violations: Violation[]
   serverFaults: LogEntry[]
   waves: number
+  /**
+   * Actions the swarm tried repeatedly and never once completed.
+   *
+   * A swarm being turned away at the door is indistinguishable from a swarm
+   * finding nothing, and it has now produced three false clean runs on this
+   * one target. A voyage that never succeeded at booking a delivery has said
+   * NOTHING about delivery booking, and must not be read as though it had.
+   */
+  starved: { action: string; attempts: number }[]
 }
 
 /** One wave's worth of decisions, made before anything is dispatched. */
@@ -54,7 +67,28 @@ function planWave(
   actions: Action[],
   world: World,
   collide: boolean,
+  groups: CollisionGroup[],
+  groupRate: number,
 ): Plan[] {
+  if (collide && groups.length && rng() < groupRate) {
+    // A cross-action contention. Each item names its own action, so the actors
+    // are assigned per item rather than all doing the same thing.
+    const group = pick(rng, groups)
+    const items = group?.build(world, rng, sessions.length)
+    if (items && items.length >= 2) {
+      const free = [...sessions]
+      const plans: Plan[] = []
+      for (const item of items) {
+        const action = actions.find((a) => a.name === item.action)
+        if (!action) continue
+        const idx = free.findIndex((s) => action.roles.includes(s.role))
+        if (idx === -1) continue
+        plans.push({ session: free.splice(idx, 1)[0]!, action, args: item.args })
+      }
+      if (plans.length >= 2) return plans
+    }
+  }
+
   if (collide) {
     // Everyone piles onto one action against one set of arguments.
     const candidates = actions.filter((a) => a.collidable)
@@ -101,8 +135,9 @@ export async function runVoyage(
   actions: Action[],
   world: World,
   soundings: Sounding[],
-  db: Soundings,
+  ctx: ProbeContext,
   opts: VoyageOpts,
+  groups: CollisionGroup[] = [],
 ): Promise<VoyageResult> {
   const personas = new Map(personaList.map((p) => [p.name, p]))
   const log: LogEntry[] = []
@@ -111,7 +146,7 @@ export async function runVoyage(
 
   for (let wave = 0; wave < opts.waves; wave++) {
     const collide = rng() < opts.collideRate
-    const plans = planWave(rng, sessions, personas, actions, world, collide)
+    const plans = planWave(rng, sessions, personas, actions, world, collide, groups, opts.groupRate ?? 0.4)
 
     const entries = await Promise.all(
       plans.map(async (p): Promise<LogEntry> => {
@@ -129,24 +164,29 @@ export async function runVoyage(
     opts.onWave?.(wave, entries)
 
     if (wave % opts.soundEvery === opts.soundEvery - 1 || wave === opts.waves - 1) {
-      for (const s of soundings) {
-        let rows: any[]
-        try {
-          rows = await db.take(s.sql)
-        } catch (e: any) {
-          throw new Error(`sounding ${s.id} could not run: ${e.message}`)
-        }
-        // One violation per sounding per voyage. A broken invariant stays
-        // broken for every later sweep, and reporting it forty times buries
-        // everything else.
-        if (rows.length && !seen.has(s.id)) {
-          seen.add(s.id)
-          violations.push({ sounding: s.id, title: s.title, rows: rows.slice(0, 5), atWave: wave })
-        }
+      // One violation per sounding per voyage. A broken invariant stays broken
+      // for every later sweep, and reporting it forty times buries everything
+      // else.
+      for (const v of await sweepAll(soundings, ctx, wave)) {
+        if (seen.has(v.sounding)) continue
+        seen.add(v.sounding)
+        violations.push(v)
       }
     }
   }
 
   const serverFaults = log.filter((e) => e.status >= 500 || e.status === 0)
-  return { log, violations, serverFaults, waves: opts.waves }
+
+  const attempts = new Map<string, { n: number; ok: number }>()
+  for (const e of log) {
+    const a = attempts.get(e.action) ?? { n: 0, ok: 0 }
+    a.n++
+    if (e.status >= 200 && e.status < 300) a.ok++
+    attempts.set(e.action, a)
+  }
+  const starved = [...attempts.entries()]
+    .filter(([, a]) => a.n >= 5 && a.ok === 0)
+    .map(([action, a]) => ({ action, attempts: a.n }))
+
+  return { log, violations, serverFaults, waves: opts.waves, starved }
 }

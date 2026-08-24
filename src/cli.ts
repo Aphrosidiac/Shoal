@@ -16,7 +16,8 @@ import { Soundings, dbUrl, ensureTemplate, resetWorkDb } from './core/db.js'
 import { login } from './core/driver.js'
 import { mulberry32 } from './core/rng.js'
 import { runVoyage } from './core/voyage.js'
-import type { Action, LogEntry, Session, Target, Violation } from './core/types.js'
+import type { Action, LogEntry, ProbeContext, Session, Target, World, Violation } from './core/types.js'
+import { sweepAll } from './core/sound.js'
 import { bbf, password } from './targets/bbf/index.js'
 import { replayLog } from './triage/replay.js'
 import { minimise } from './triage/minimise.js'
@@ -134,13 +135,19 @@ async function rig(t: Target, quiet: boolean): Promise<Rig> {
   }
 }
 
-async function sweep(t: Target, db: Soundings, atWave: number): Promise<Violation[]> {
-  const out: Violation[] = []
-  for (const s of t.soundings) {
-    const rows = await db.take(s.sql)
-    if (rows.length) out.push({ sounding: s.id, title: s.title, rows: rows.slice(0, 5), atWave })
+/** Everything a probe sounding is allowed to reach. */
+function context(r: Rig, world: World): ProbeContext {
+  return {
+    sessions: new Map(r.sessions.map((s) => [s.id, s])),
+    surveyor: r.surveyor,
+    sql: (text) => r.db.take(text),
+    memory: new Map(),
+    world,
   }
-  return out
+}
+
+async function sweep(t: Target, ctx: ProbeContext, atWave: number): Promise<Violation[]> {
+  return sweepAll(t.soundings, ctx, atWave)
 }
 
 async function cmdRun() {
@@ -151,12 +158,13 @@ async function cmdRun() {
   const soundEvery = num('sound-every', 5)
   const quiet = !has('verbose')
 
-  console.log(`\n  shoal · ${t.name} · seed ${seed} · ${waves} waves · ${t.personas.length} actors\n`)
+  console.log(`\n  shoal · ${t.name} · seed ${seed} · ${waves} waves\n`)
   const r = await rig(t, quiet)
   try {
     const world = await t.survey(r.surveyor)
     console.log(
-      `  surveyed: ${world.customers.length} customers, ${world.slots.length} windows, ${world.dates.length} dates\n`,
+      `  ${r.sessions.length} actors · surveyed ${world.customers.length} customers, ` +
+        `${world.slots.length} windows, ${world.dates.length} bookable dates\n`,
     )
     if (!world.customers.length || !world.slots.length) {
       throw new Error('the survey came back empty — is the source database seeded?')
@@ -169,7 +177,7 @@ async function cmdRun() {
       t.actions,
       world,
       t.soundings,
-      r.db,
+      context(r, world),
       {
         waves,
         collideRate: collide,
@@ -178,6 +186,7 @@ async function cmdRun() {
           if (w % 10 === 9) process.stdout.write(`  wave ${w + 1}/${waves}\r`)
         },
       },
+      t.collisionGroups ?? [],
     )
     process.stdout.write('                          \r')
 
@@ -188,6 +197,7 @@ async function cmdRun() {
       actors: r.sessions.length,
       violations: result.violations,
       serverFaults: result.serverFaults,
+      starved: result.starved,
       log: result.log,
     }
 
@@ -217,7 +227,7 @@ async function cmdRun() {
             const world = await t.survey(again.surveyor)
             const sessions = new Map(again.sessions.map((s) => [s.id, s]))
             await replayLog(log, sessions, actions, world)
-            const v = await sweep(t, again.db, -1)
+            const v = await sweep(t, context(again, world), -1)
             if (targetSounding ? v.some((x) => x.sounding === targetSounding) : v.length) {
               hits++
               return true
@@ -248,6 +258,13 @@ async function cmdRun() {
 }
 
 function report(chart: Chart) {
+  // Printed FIRST, and before any verdict. A voyage that never managed to do
+  // something has not tested it, and the reader has to know that before they
+  // read anything else as reassurance.
+  for (const s of chart.starved ?? []) {
+    console.log(`  STARVED  "${s.action}" was refused all ${s.attempts} times it was tried`)
+    console.log(`           nothing this voyage says about it means anything`)
+  }
   if (!chart.violations.length && !chart.serverFaults.length) {
     console.log(`  ${chart.log.length} actions. Nothing tripped.`)
     return
@@ -277,7 +294,7 @@ async function cmdReplay() {
     try {
       const world = await t.survey(r.surveyor)
       await replayLog(log, new Map(r.sessions.map((s) => [s.id, s])), actions, world)
-      const v = await sweep(t, r.db, -1)
+      const v = await sweep(t, context(r, world), -1)
       if (v.length) hits++
       console.log(`  attempt ${i + 1}: ${v.length ? v.map((x) => x.sounding).join(', ') : 'clear'}`)
     } finally {
@@ -312,9 +329,15 @@ async function cmdDoctor() {
     const world = await t.survey(r.surveyor)
     console.log(`  booted   port ${t.port}, ${r.sessions.length} personas logged in`)
     console.log(`  world    ${world.customers.length} customers · ${world.products.length} products · ${world.slots.length} windows`)
-    const v = await sweep(t, r.db, -1)
+    const v = await sweep(t, context(r, world), -1)
     console.log(`  sweep    ${t.soundings.length} soundings ran, ${v.length} tripped on the seeded data`)
-    for (const x of v) console.log(`           ! ${x.sounding} — ${x.title}`)
+    for (const x of v) {
+      console.log(`           ! ${x.sounding} — ${x.title}`)
+      // The rows, not just the name. A doctor that says which sounding tripped
+      // but not why sends you reading source to find out whether the check or
+      // the seed is wrong.
+      for (const row of x.rows) console.log(`             ${JSON.stringify(row)}`)
+    }
 
     const empty = ['customers', 'products', 'slots'].filter((k) => (world as any)[k].length === 0)
     if (empty.length) {

@@ -21,6 +21,16 @@ export interface DocRef {
   id: string
   docNo: string
   total: number
+  /**
+   * Last status Shoal saw, for DRIVING only.
+   *
+   * This is a model of how the business moves a document, used to choose a
+   * plausible next request — not an oracle. Nothing asserts on it. A swarm
+   * that picks statuses at random walks documents into VOID immediately and
+   * then spends the voyage being refused: convert-quotation was turned away
+   * 29 times out of 29 before this existed, and the run still read as clean.
+   */
+  status: string
 }
 
 /**
@@ -35,7 +45,19 @@ export interface World {
   customers: string[]
   products: string[]
   slots: string[]
+  /** Dates the swarm books into. Nothing is ever allowed to close one. */
   dates: string[]
+  /**
+   * Dates that exist to be closed.
+   *
+   * Blacking out a date permanently removes it from the bookable world. With
+   * one shared pool of three dates, a blackout on wave 0 closed the first and
+   * the rest followed: an entire 80-wave voyage scheduled NOTHING and reported
+   * clear water on every delivery sounding. Anything that closes a date takes
+   * a fresh one from here, so the race is still generated and the world
+   * survives it.
+   */
+  spareDates: string[]
   quotations: DocRef[]
   invoices: DocRef[]
   deliveries: string[]
@@ -102,16 +124,55 @@ export interface Persona {
 /**
  * A check that must hold no matter what the actors did.
  *
- * The SQL returns the rows that VIOLATE it — an empty result is a pass. Write
- * it from the domain, never from the implementation: an invariant extracted
- * from the code encodes the code's bugs and then agrees with them for ever.
+ * Write it from the domain, never from the implementation: an invariant
+ * extracted from the code encodes the code's bugs and then agrees with them
+ * for ever.
+ *
+ * Two kinds, because two kinds of truth are checkable. A SQL sounding reads
+ * the state the system ended in. A PROBE sounding asks the system questions
+ * and checks the answers against each other — which is the only way to reach
+ * anything the database is right about and the API is wrong about: a list that
+ * silently returns nothing, a document that will not print, a role that can
+ * read a page it was never granted. A 200 with an empty body is not an error
+ * and leaves no trace in any table.
  */
-export interface Sounding {
+interface SoundingBase {
   id: string
   title: string
   /** Why this is true of the business, not of the code. */
   because: string
+}
+
+export interface SqlSounding extends SoundingBase {
+  kind?: 'sql'
+  /** Returns the rows that VIOLATE the rule. Empty is a pass. */
   sql: string
+}
+
+export interface ProbeSounding extends SoundingBase {
+  kind: 'probe'
+  /** Returns violating observations. Empty is a pass. */
+  take(ctx: ProbeContext): Promise<any[]>
+}
+
+export type Sounding = SqlSounding | ProbeSounding
+
+export interface ProbeContext {
+  /** Every actor, by session id, so a probe can ask as a specific role. */
+  sessions: Map<string, Session>
+  /** The ungated actor, for probes that need to see everything. */
+  surveyor: Session
+  /** Straight to Postgres, for probes that compare an answer against the truth. */
+  sql(text: string): Promise<any[]>
+  /**
+   * Survives every sweep of one voyage.
+   *
+   * Some rules are about CHANGE, not about state — a sent document's customer
+   * details must never be rewritten — and no single query can see that. A
+   * probe remembers what it saw and compares.
+   */
+  memory: Map<string, unknown>
+  world: World
 }
 
 export interface Violation {
@@ -151,6 +212,20 @@ export interface LogEntry {
   produced?: string
 }
 
+/**
+ * A contention worth forcing between DIFFERENT actions.
+ *
+ * Every collision wave so far is one action many times over. Some races are
+ * two different operations reaching for the same thing — closing a delivery
+ * date while somebody books onto it — and no amount of repeating one action
+ * generates that.
+ */
+export interface CollisionGroup {
+  name: string
+  /** One item per actor wanted; each names an action and its arguments. */
+  build(w: World, rng: Rng, actors: number): { action: string; args: any }[] | null
+}
+
 export interface Target {
   name: string
   /** Where the target repo lives. */
@@ -163,6 +238,7 @@ export interface Target {
   personas: Persona[]
   actions: Action[]
   soundings: Sounding[]
+  collisionGroups?: CollisionGroup[]
   /** Fresh world, read back off the API after a reset. */
   survey(s: Session): Promise<World>
 }

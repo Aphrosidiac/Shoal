@@ -46,10 +46,25 @@ reset db from template  →  boot target  →  log in every persona  →  survey
    chart: violations + server faults + the log, shrunk to a minimal repro
 ```
 
+**Two kinds of sounding.** A SQL sounding reads the state the system ended in.
+A PROBE sounding asks the system questions and checks the answers against each
+other, against the database, and against what it saw last sweep. That second
+kind is the only way to reach what the database is right about and the API is
+wrong about — a list quietly returning less than it holds, a document that will
+not print, a role reading a page it was never granted, a frozen field that
+moved. A 200 with an empty body is not an error and leaves no trace in any
+table.
+
 **Waves, not streams.** Each wave dispatches one action per actor at once and
 waits for all of them before sweeping. The requests genuinely overlap, which is
 the only way a race is reachable — and every violation is pinned to a wave, so
 the shrinker has a unit to remove.
+
+**A swarm that is being refused is not a swarm that found nothing.** Every
+action's success rate is tracked, and anything tried five times without once
+succeeding is reported as STARVED, above the verdict. This is not a nicety: it
+has caught four false clean runs on one target, including a voyage in which no
+delivery was scheduled at all and every delivery sounding still read green.
 
 **Collision is forced, not hoped for.** Five actors picking freely from fifteen
 actions over a world of forty rows almost never touch the same row in the same
@@ -58,6 +73,14 @@ single-threaded test. So a fraction of waves are *collision waves*: one action,
 one target row, every eligible actor at once. That is the generated form of the
 races BBF's own suite writes by hand — except a flag can be put on an action
 nobody suspects, which is where the next one will be.
+
+Collisions come in three shapes, and only the first is obvious. SAME-ROW is
+five people paying one invoice. SHARED-RESOURCE is five different jobs
+competing for the last place in one delivery window — identical arguments there
+book one job five times, which is not a race at all. CROSS-ACTION is two
+different operations reaching for the same thing: closing a delivery date while
+somebody books onto it, which no amount of repeating a single action can
+generate.
 
 ## Determinism, honestly
 
@@ -168,33 +191,45 @@ PLANNING.
 A clean run is a claim about the target. Two of these three were claims about
 the instrument.
 
+### Four more of the same, caught by the guard rather than by luck
+
+Adding cross-action collisions produced an 80-wave voyage in which **not one
+delivery was ever scheduled**. A blackout landed on wave 0, closed one of only
+three bookable dates, and the rest followed; every delivery sounding read green
+over a half of the system that had been dead since the start. Blackouts now
+consume dates from a separate pool that nothing books into.
+
+The starvation guard, added in response, immediately found three more:
+`create-customer` had been posting `name` where the route wants `companyName`
+and was refused every time; `convert-quotation` was refused 27 times out of 27
+because nothing ever reached ACCEPTED; and the reason nothing did was that
+documents were being drawn uniformly, so each of twenty got picked well under
+twice in a voyage and none walked DRAFT → SENT → ACCEPTED.
+
+Every one of those looked exactly like a passing test.
+
 ## Findings so far
 
-**`total-equals-lines` — current `main`, not previously known.** Seed 4471,
-reproduces 3/3 as a full log and 11/39 once shrunk to its minimum.
+Both are the same root cause, and stating it that way is worth more than either
+bug: **three routes write the `sales_docs` row and only one takes the lock.**
+`POST /api/invoices/:id/payments` locks. `PUT /api/sales-docs/:id` and
+`PUT /api/sales-docs/:id/status` do not.
 
-`PUT /api/sales-docs/:id` replaces a draft's lines with `deleteMany` followed by
-`create` inside a transaction, but unlike the payment path it takes no row lock.
-Under READ COMMITTED each concurrent edit deletes only the rows committed and
-visible to it, then inserts its own; every edit's rows survive and `total` comes
-from whichever transaction committed last.
-
+**`total-equals-lines`.** The edit route replaces a draft's lines with
+`deleteMany` then `create` inside a transaction, unlocked. Under READ COMMITTED
+each concurrent edit deletes only the rows visible to it and inserts its own, so
+every edit's rows survive while `total` comes from whichever committed last.
 Four simultaneous edits of one draft quotation left **12 line rows summing to
-RM 72,200 on a document whose total said RM 18,050**. All four returned 200.
-Nothing was logged and nothing was thrown.
+RM 72,200 on a document whose total said RM 18,050**, all four returning 200
+with nothing logged. Reproduces 3/3; shrinks from 253 actions to 9 across 2
+waves.
 
-Shrunk from 253 actions to 9 across 2 waves:
-
-```
-wave  35  sales-pj   create-invoice    → 201
-wave  46  sales-jb   edit-doc-lines    → 200
-wave  46  sales-pj   edit-doc-lines    → 200
-wave  46  office     edit-doc-lines    → 200
-wave  46  manager    edit-doc-lines    → 200
-```
-
-Two people editing the same draft at the same moment is an ordinary Tuesday, and
-the figure that comes out wrong is the one the customer adds up.
+**`status-follows-money`.** The status route writes `status` directly while the
+payment route derives it from `paid_amt`. In one wave a payment of RM 1,637.25
+returned 201, deriving PARTIAL, and a status write of SENT returned 200. Final
+state: total RM 6,549, paid RM 1,637.25, **status SENT** — an invoice with money
+against it sitting in the chase list. It self-heals only if another payment
+happens to re-derive the status later; without one it stays wrong for good.
 
 ## Adding a target
 
@@ -214,16 +249,9 @@ not.
 
 ## Not yet
 
-- Snapshot immutability (a sent document's customer details must never be
-  rewritten) needs Shoal to remember field values across waves, not just query
-  the end state.
-- Cross-role leakage — actor A receiving actor B's rows — is a driver-level
-  sounding, not SQL.
 - Fault injection at the boundary: webhooks delivered twice, never, or out of
   order. This is where several production incidents here actually came from.
-- Cross-ACTION collisions. Every collision wave is currently one action many
-  times. The blackout race — closing a date while somebody books onto it — needs
-  two different actions contending for one resource, and BBF's day lock covers
-  a case Shoal cannot yet generate.
+- Aged state. Every voyage starts on the seed and runs eighty waves; nothing
+  yet simulates a system that has been running for a year.
 - A UI driver. Everything above is the API surface; the silent-blank-row class
   needs a browser.
