@@ -9,7 +9,7 @@ import { decide, type Attempt, type ReproStep } from '../../replay/verdict.js'
 import { endpointLabel } from '../../watch/index.js'
 import * as findings from '../../store/repo/findings.js'
 import { findingFp } from '../../map/fingerprint.js'
-import { firstObject, parse } from '../../watch/types.js'
+import { firstObject, idOf, parse } from '../../watch/types.js'
 import { pathOf, readBackUrl } from '../../replay/probes.js'
 import { safeHeaders } from '../../replay/request.js'
 import { live } from '../../ui/live.js'
@@ -215,6 +215,19 @@ async function attempt(ctx: Ctx, rp: Replayer, rec: Recording, shape: string, wi
     }
   }
 
+  // A create is checked against its own receipts, not against a count.
+  //
+  // Counting cannot work here however carefully it is calibrated: fifteen other
+  // workers are creating rows in the same collection throughout, so "the total
+  // should have moved by eight" is a claim about a number nobody controls. Two
+  // consecutive runs reported POST /api/orders as losing writes on that
+  // arithmetic, and the endpoint is a plain INSERT.
+  //
+  // But every create hands back the id of the thing it made. Ask for each of
+  // them afterwards. A 404 for something the app said it created is a lost
+  // write and no amount of concurrent traffic can fake it.
+  if (isCreate(rec)) return createReceipts(ctx, rp, rec, shape, width)
+
   const waveId = `wave-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   const shots = buildShots(ctx, rec, shape, width)
   live.hammer({ endpoint: `${rec.method} ${pathOf(rec.url)}`, shape, workers: shots.length, at: Date.now() })
@@ -374,6 +387,70 @@ function siblingWrite(ctx: Ctx, rec: Recording): Recording | undefined {
        ORDER BY id DESC LIMIT 1`
     )
     .get(rec.endpoint_id, `%${prefix}%`) as Recording | undefined
+}
+
+const isCreate = (rec: Recording): boolean => rec.method === 'POST' && objectUrlFor(rec.url) === null
+
+/**
+ * Fire the volley, then ask the app for every id it just told us it created.
+ * Immune to anything else happening on the app at the time, which is the whole
+ * reason it exists.
+ */
+async function createReceipts(
+  ctx: Ctx,
+  rp: Replayer,
+  rec: Recording,
+  shape: string,
+  width: number
+): Promise<Attempt> {
+  const waveId = `wave-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const shots = buildShots(ctx, rec, shape, width)
+  live.hammer({ endpoint: `${rec.method} ${pathOf(rec.url)}`, shape, workers: shots.length, at: Date.now() })
+  const fired = await volley(ctx, shots, waveId)
+  const ok = fired.filter((s) => s.status >= 200 && s.status < 300)
+  const landed = spread(fired)
+  if (landed > 1500) {
+    return { verdict: 'inconclusive', steps: [], recordingIds: ids(fired), why: `the volley landed ${landed}ms apart, which is not a race` }
+  }
+  if (ok.length < 2) {
+    return { verdict: 'inconclusive', steps: [], recordingIds: ids(fired), why: `only ${ok.length} of ${fired.length} were accepted, so nothing overlapped` }
+  }
+
+  const claimed: string[] = []
+  for (const s of ok) {
+    const id = idOf(firstObject(s.json) ?? {})
+    if (id) claimed.push(id)
+  }
+  if (claimed.length < 2) {
+    return { verdict: 'inconclusive', steps: [], recordingIds: ids(fired), why: 'the responses do not say what they created, so there is no receipt to check' }
+  }
+  const duplicates = claimed.length - new Set(claimed).size
+
+  const base = new URL(rec.url)
+  const missing: string[] = []
+  for (const id of new Set(claimed)) {
+    const res = await rp.fire({
+      method: 'GET',
+      url: `${base.origin}${base.pathname.replace(/\/$/, '')}/${id}`,
+      accountId: rec.account_id,
+    })
+    if (res.status === 404 || res.status === 410) missing.push(id)
+  }
+
+  if (!missing.length && !duplicates) return { verdict: 'clean', steps: [], recordingIds: ids(fired) }
+  return {
+    verdict: 'reproduced',
+    steps: [
+      { method: rec.method, path: pathOf(rec.url), status: `${ok.length} x ${ok[0]!.status}`, note: `${fired.length} at once, ${landed}ms apart` },
+      { method: 'GET', path: `${pathOf(base.pathname)}/{each id it returned}`, status: `${missing.length} answered 404`, note: 'the app cannot find what it said it made' },
+    ],
+    recordingIds: ids(fired),
+    detail:
+      duplicates
+        ? `${ok.length} concurrent creates were accepted and ${duplicates} of them came back with an id another one had already been given.`
+        : `${ok.length} concurrent creates were accepted, each answering with the id of the row it had made. ${missing.length} of those ids ` +
+          `(${missing.slice(0, 4).join(', ')}) cannot be fetched afterwards. The app told the caller it had created something it did not keep.`,
+  }
 }
 
 /** /api/invoices/8/payments -> /api/invoices/8 */

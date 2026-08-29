@@ -489,3 +489,16 @@ spend            $0.00
 ```
 
 pages 33, endpoints 50, accounts 4, requests 5207, actions 911
+
+## 2026-08-29 14:13 — M6: 24 hours unattended
+
+```
+found            0 of 11
+missed           #1 (race.lostupdate), #2 (money.overpaid), #3 (leak.crossaccount), #4 (paging.walk), #5 (wrong.readback), #6 (fault.5xx), #7 (wrong.consistency), #8 (idempotency.double), #9 (auth.role), #10 (slow), #11 (fault.stack)
+false positives  0
+wall clock       16m 25s
+model calls      0        (0.00 per action)
+spend            $0.00
+```
+
+pages 0, endpoints 0, accounts 0, requests 0, actions 0
