@@ -15,6 +15,7 @@ import { safeHeaders } from '../../replay/request.js'
 import { live } from '../../ui/live.js'
 import { smallestWave } from '../../replay/shrink.js'
 import * as coverage from '../../store/repo/coverage.js'
+import { isDoorEndpoint } from '../kinds.js'
 
 const WAVE = 8
 
@@ -33,7 +34,13 @@ export async function runHammer(ctx: Ctx, rp: Replayer, item: Item): Promise<str
   if (!endpoint) return 'that endpoint is gone'
   const rec = pickSeed(ctx, p.endpointId)
   if (!rec) return 'nothing recorded to fire'
-  if (/logout|sign_?out|register|signup/i.test(rec.url)) return 'not hammering the door'
+  if (isDoorEndpoint(rec.url) || isDoorEndpoint(`${endpoint.method} ${endpoint.path_pattern}`)) {
+    // Marked, not merely refused: the scheduler paces every endpoint against
+    // the least-hammered one, and an endpoint that can never advance holds all
+    // the others at a standstill.
+    coverage.set(ctx.db, `nohammer:${p.endpointId}`, 1)
+    return 'not hammering the door'
+  }
 
   const label = endpointLabel(ctx, p.endpointId)
   map.markHammered(ctx.db, p.endpointId)

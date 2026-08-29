@@ -28,3 +28,17 @@ export const CONFIRMER_KINDS: Kind[] = ['confirm']
 export const COSTS_MODEL: Record<Kind, boolean> = {
   explore: true, form: true, mission: true, hammer: false, confirm: false, crossaccount: false,
 }
+
+/**
+ * The way in is never hammered. Firing a signup or login volley makes accounts
+ * and changes who the run is, which is not a test of anything.
+ *
+ * It lives here because two places need the same answer: the worker, which
+ * refuses it, and the scheduler, which must not sit waiting for it to catch
+ * up. The first version only had it in the worker, so register stayed on round
+ * zero forever, the round-robin held every other endpoint at round one to keep
+ * pace with it, and hammering — the thing that grows the data other checks
+ * need — nearly stopped.
+ */
+export const isDoorEndpoint = (methodAndPath: string): boolean =>
+  /logout|sign_?out|register|signup|sign_?up|login|sign_?in|session/i.test(methodAndPath)

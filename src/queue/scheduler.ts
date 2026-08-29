@@ -8,6 +8,7 @@ import * as coverage from '../store/repo/coverage.js'
 import { repriceAll, scoreOf } from './score.js'
 import { classesFor } from '../map/values.js'
 import type { Kind, Item } from '../store/repo/queue.js'
+import { isDoorEndpoint } from './kinds.js'
 
 export type Runner = (item: Item) => Promise<string>
 
@@ -83,6 +84,7 @@ export function seed(ctx: Ctx): number {
 
   for (const e of map.endpoints(db)) {
     if (!e.writes) continue
+    if (isDoorEndpoint(`${e.method} ${e.path_pattern}`)) continue
     if (!recordings.forEndpoint(db, e.id, 1).length) continue
     if (coverage.get(db, `nohammer:${e.id}`)) continue
     // Rounds, not one shot. Hammering is also how the app accumulates data,
@@ -149,9 +151,11 @@ export function seed(ctx: Ctx): number {
 /** The round the least-hammered live write endpoint is on. */
 function leastHammeredRound(db: Ctx['db']): number {
   const rows = db
-    .prepare('SELECT id, hammered FROM endpoints WHERE writes = 1')
-    .all() as Array<{ id: number; hammered: number }>
-  const live = rows.filter((r) => !coverage.get(db, `nohammer:${r.id}`))
+    .prepare('SELECT id, method, path_pattern, hammered FROM endpoints WHERE writes = 1')
+    .all() as Array<{ id: number; method: string; path_pattern: string; hammered: number }>
+  const live = rows.filter(
+    (r) => !coverage.get(db, `nohammer:${r.id}`) && !isDoorEndpoint(`${r.method} ${r.path_pattern}`)
+  )
   if (!live.length) return 0
   return Math.min(...live.map((r) => Math.floor(r.hammered / 3)))
 }
