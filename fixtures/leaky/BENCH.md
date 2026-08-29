@@ -420,3 +420,33 @@ The twelve requests are the explorers logging in before they reach the budget
 gate. There were no hammer or confirm items ready at that moment — all 30 and
 19 of them were already done — so the free workers correctly had nothing to
 carry on with, rather than being blocked from it.
+
+## 2026-08-29 — a run stopped at twenty minutes, and what it showed
+
+Not a result. This entry replaces one the harness wrote automatically as that
+run shut down, which read `0 of 11, 0 pages, 0 requests` — false in every
+figure, because the process was killed and its final report ran against a
+directory the replacement run had already wiped. A number that never happened
+does not belong in a file whose whole purpose is being trustworthy.
+
+What the run actually held when it was stopped, read out of its store:
+
+```
+elapsed 19m   findings 7 of 11, zero false positives   requests 4791
+```
+
+It was stopped on purpose. Looking at it rather than waiting for it showed that
+it could not have reached the gate's nine:
+
+```
+POST /api/orders                 marked nohammer, 3 rounds, then never again
+POST /api/invoices/:id/payments  123 rounds, 2,564 requests
+orders in existence              29
+```
+
+Bug #10 needs roughly six hundred rows before it is slow enough to be seen and
+#4 needs more rows than fit on one page, so both were unreachable and would
+have stayed unreachable for another twenty-three hours. The causes are in the
+commit above this one: a permanent "nothing to measure here" that should have
+meant "not yet", and hammer rounds that were first-past-the-post instead of
+round-robin.
