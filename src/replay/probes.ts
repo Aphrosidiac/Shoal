@@ -24,7 +24,26 @@ const step = (r: Recording | { method: string; url: string }, status: number | s
   ...(note ? { note } : {}),
 })
 
-export const pathPatternOf = (ctx: Ctx, url: string): string => {
+export /** The cheapest thing this app is known to do, fired now as a control. */
+async function cheapControl(
+  ctx: Ctx,
+  rp: Replayer,
+  exclude: number | null
+): Promise<{ path: string; ms: number } | null> {
+  const row = ctx.db
+    .prepare(
+      `SELECT r.url, AVG(r.ms) avg FROM recordings r
+       WHERE r.method = 'GET' AND r.status = 200 AND r.endpoint_id IS NOT ?
+       GROUP BY r.endpoint_id HAVING COUNT(*) >= 3
+       ORDER BY avg ASC LIMIT 1`
+    )
+    .get(exclude) as { url: string; avg: number } | undefined
+  if (!row) return null
+  const res = await rp.fire({ method: 'GET', url: row.url, accountId: null, record: false })
+  return { path: pathOf(row.url), ms: res.ms }
+}
+
+const pathPatternOf = (ctx: Ctx, url: string): string => {
   try {
     return ctx.patterns.pattern(new URL(url).pathname)
   } catch {
@@ -91,12 +110,39 @@ export async function faultAttempt(
       return { verdict: hit ? 'reproduced' : 'clean', steps: s, recordingIds: ids }
     }
     case 'slow': {
-      const hit = res.ms >= ctx.cfg.slowMs
+      // Against a control, always. Shoal runs eight hammerers and three
+      // browsers on the same machine as the app, so "this took four seconds"
+      // is as likely to be a statement about the load we are generating as
+      // about the endpoint. One run reported seventeen slow endpoints, of
+      // which one was the planted bug and sixteen were the laptop.
+      //
+      // So: fire the cheapest thing this app has, right now, next to it. If
+      // that is also slow, we are the problem and we know nothing.
+      const control = await cheapControl(ctx, rp, rec.endpoint_id)
+      if (!control) return { verdict: 'inconclusive', steps: [], recordingIds: ids, why: 'no cheap endpoint to compare against' }
+      if (control.ms >= ctx.cfg.slowMs / 3) {
+        return {
+          verdict: 'inconclusive',
+          steps: [],
+          recordingIds: ids,
+          why: `everything is slow right now — the control took ${control.ms}ms — so this says more about the machine than the endpoint`,
+        }
+      }
+      const hit = res.ms >= ctx.cfg.slowMs && res.ms > control.ms * 5
       return {
         verdict: hit ? 'reproduced' : 'clean',
-        steps: [step(rec, `${res.status} in ${(res.ms / 1000).toFixed(1)}s`)],
+        steps: [
+          { method: 'GET', path: control.path, status: `200 in ${control.ms}ms`, note: 'a cheap call on this app, at the same moment' },
+          step(rec, `${res.status} in ${(res.ms / 1000).toFixed(1)}s`),
+        ],
         recordingIds: ids,
-        ...(hit ? { detail: `Took ${(res.ms / 1000).toFixed(1)}s against a ${(ctx.cfg.slowMs / 1000).toFixed(1)}s threshold.` } : {}),
+        ...(hit
+          ? {
+              detail:
+                `Took ${(res.ms / 1000).toFixed(1)}s against a ${(ctx.cfg.slowMs / 1000).toFixed(1)}s threshold, while ` +
+                `${control.path} answered in ${control.ms}ms at the same moment. The machine was not busy; this path was.`,
+            }
+          : {}),
       }
     }
     default:
