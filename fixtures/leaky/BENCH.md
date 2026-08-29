@@ -144,3 +144,32 @@ never hammered. The hammering machinery is not the problem — five of eight
 write endpoints were hammered, and the paging find proves the tilt now tips.
 Reaching a payment means create an order, open its invoice, pay it, and nothing
 in the tool pursues a goal like that yet.
+
+## 2026-08-29 11:26 — M4 attempt: re-queue a form that has never once worked
+
+```
+found            3 of 11
+missed           #1 (race.lostupdate), #2 (money.overpaid), #4 (paging.walk), #5 (wrong.readback), #6 (fault.5xx), #7 (wrong.consistency), #10 (slow), #11 (fault.stack)
+false positives  0
+wall clock       30m 7s
+model calls      684        (0.64 per action)
+spend            $0.00
+```
+
+pages 30, endpoints 48, accounts 4, requests 1735, actions 1071
+
+The tenancy fix worked — `isolated`, and the tenant leak came back. Everything
+else went the wrong way, and the reason is the point of this entry.
+
+Six recorded runs now: **6, 5, 5, 3** of eleven, zero false positives every
+time, with the code getting better between them. What moves that number is not
+the checks. It is which forms a thirty-minute run happens to submit. This run
+poked 22 of 30 field classes and never touched the payment form or the report
+form, so it lost #1, #2, #7 (all behind a payment) and #6, #11 (both behind a
+malformed date) in one go. The previous run poked 19 and got two of those.
+
+That is not a tuning problem, and four more thirty-minute runs will not fix it.
+The design says so on its own front page: ten minutes finds a few things, a day
+finds about everything. Two of the eleven planted bugs **cannot exist** on a
+small database. Trying to close a concurrency gate in thirty-minute slices was
+the mistake; the next entry is a long run.

@@ -43,6 +43,29 @@ export function seed(ctx: Ctx): number {
     // registering itself spends the whole run on the front door. Signup is
     // how accounts are made, not something to poke.
     if (isDoorway(form.name, where)) continue
+    // A form we have never once submitted successfully is the biggest hole in
+    // the map — bigger than any untried hostile value. Each value class is
+    // tried once and only once, so if the single valid class happens to be
+    // spent on a run that never reached the page, that endpoint can never get
+    // a working call again. One run left POST /api/invoices/:id/payments with
+    // exactly one request against it, a 400, and three of the eleven planted
+    // bugs live behind a payment that works.
+    if (!everWorked(db, form.name)) {
+      const tries = coverage.get(db, `retry:${form.id}`)
+      if (tries < 8) {
+        const id = queue.push(db, {
+          kind: 'form',
+          payload: { formId: form.id, fieldId: map.fieldsOf(db, form.id)[0]?.id ?? 0, valueClass: 'normal', path: where },
+          score: scoreOf(db, 'form', { formId: form.id }) * 2,
+          dedupeKey: `form:works:${form.id}:${tries}`,
+        })
+        if (id) {
+          coverage.set(db, `retry:${form.id}`, tries + 1)
+          added++
+        }
+      }
+    }
+
     for (const field of map.fieldsOf(db, form.id)) {
       const tried = new Set(JSON.parse(field.tried_json) as string[])
       for (const cls of classesFor(field.type ?? 'text')) {
@@ -116,6 +139,16 @@ export function seed(ctx: Ctx): number {
 
   coverage.set(db, 'frontier', queue.frontier(db))
   return added
+}
+
+/** Has this form's endpoint ever answered a success to anybody? */
+function everWorked(db: Ctx['db'], formName: string | null): boolean {
+  if (!formName || !formName.startsWith('/')) return true
+  const rows = db
+    .prepare('SELECT statuses_json FROM endpoints WHERE path_pattern = ? AND writes = 1')
+    .all(formName) as Array<{ statuses_json: string }>
+  if (!rows.length) return true // no endpoint of ours behind it; nothing to judge
+  return rows.some((r) => Object.keys(JSON.parse(r.statuses_json) as Record<string, number>).some((s) => Number(s) >= 200 && Number(s) < 300))
 }
 
 const DOORWAY = /login|log-?in|signin|sign-?in|signup|sign-?up|register|logout|sign-?out|password|session|auth/i
