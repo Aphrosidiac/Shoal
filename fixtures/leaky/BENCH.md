@@ -91,3 +91,16 @@ spend            $0.00
 ```
 
 pages 33, endpoints 51, accounts 4, requests 2822, actions 1273
+
+## 2026-08-29 09:49 — one form per form, not one per row
+
+```
+found            5 of 11
+missed           #1 (race.lostupdate), #2 (money.overpaid), #4 (paging.walk), #5 (wrong.readback), #7 (wrong.consistency), #10 (slow)
+false positives  0
+wall clock       30m 8s
+model calls      692        (0.65 per action)
+spend            $0.00
+```
+
+pages 30, endpoints 50, accounts 4, requests 1640, actions 1072

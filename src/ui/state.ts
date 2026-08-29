@@ -13,11 +13,20 @@ export function state(db: DB, cfg: Config, appUrl: string, build_: string): Reco
   const r = build(db, appUrl)
   const run = currentRun(db, appUrl)
   const l = live.snapshot()
+  const recent = recordings.recent(db, 120)
   const feed = l.feed.length
     ? l.feed
-    : recordings.recent(db, 60).map((x) => ({
+    : recent.slice(0, 60).map((x) => ({
         at: x.started_at, method: x.method, path: pathOf(x.url), status: x.status ?? 0, ms: x.ms, worker: x.worker,
       }))
+  // `shoal ui` is a second process reading the same file, so it has none of
+  // the in-memory state the run keeps. The traffic is on disk though, and the
+  // first question the dashboard exists to answer — is it alive and doing
+  // something useful — has to be answerable from a detached window too.
+  const workers = l.workers.length ? l.workers : workersFromTraffic(recent)
+  // Same reason: the config that matters is the one the run was started with,
+  // not whatever happens to be in the directory this window was opened from.
+  const ran = runConfig(run?.config_json) ?? cfg
 
   return {
     app: {
@@ -25,9 +34,9 @@ export function state(db: DB, cfg: Config, appUrl: string, build_: string): Reco
       uptimeMs: Date.now() - (run?.started_at ?? Date.now()),
       build: build_,
       running: Date.now() - (run?.last_seen_at ?? 0) < 30_000,
-      driver: shortModel(cfg.driver.provider, cfg.driver.model),
-      planner: shortModel(cfg.planner.provider, cfg.planner.model),
-      config: { explorers: cfg.explorers, hammerers: cfg.hammerers, confirmers: cfg.confirmers },
+      driver: shortModel(ran.driver.provider, ran.driver.model),
+      planner: shortModel(ran.planner.provider, ran.planner.model),
+      config: { explorers: ran.explorers, hammerers: ran.hammerers, confirmers: ran.confirmers },
     },
     counters: {
       pages: r.coverage.pages,
@@ -46,7 +55,7 @@ export function state(db: DB, cfg: Config, appUrl: string, build_: string): Reco
       spend: r.spend.usd,
     },
     tenancy: r.tenancy,
-    workers: l.workers,
+    workers,
     feed,
     hammers: l.hammers,
     starved: r.starved,
@@ -85,6 +94,42 @@ export function state(db: DB, cfg: Config, appUrl: string, build_: string): Reco
       requests: (db.prepare('SELECT COUNT(*) c FROM recordings WHERE account_id = ?').get(a.id) as { c: number }).c,
     })),
   }
+}
+
+function runConfig(json: string | undefined): Config | null {
+  if (!json) return null
+  try {
+    return JSON.parse(json) as Config
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Who was doing what, reconstructed from the last few minutes of traffic.
+ * Coarser than the live view — it cannot tell thinking from acting — but it is
+ * the difference between a detached window saying "no explorer has started
+ * yet" under a run that is plainly working, and one that shows the run.
+ */
+function workersFromTraffic(rows: recordings.Recording[]): Array<Record<string, unknown>> {
+  const seen = new Map<string, { at: number; path: string; status: number }>()
+  for (const r of rows) {
+    if (seen.has(r.worker)) continue
+    seen.set(r.worker, { at: r.started_at, path: pathOf(r.url), status: r.status ?? 0 })
+  }
+  const now = Date.now()
+  return [...seen.entries()]
+    .map(([name, last]) => ({
+      name,
+      kind: name.startsWith('explorer') || name.startsWith('scout') ? 'explorer' : name.startsWith('confirmer') ? 'confirmer' : 'hammerer',
+      state: now - last.at < 20_000 ? 'acting' : 'idle',
+      account: null,
+      where: last.path,
+      did: `${last.status} · ${Math.round((now - last.at) / 1000)}s ago`,
+      goal: '',
+      at: last.at,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name))
 }
 
 /** The rail is 196px wide, so this is a name, not a description. */

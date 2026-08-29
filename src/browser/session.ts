@@ -5,6 +5,7 @@ import * as accounts from '../store/repo/accounts.js'
 import * as map from '../store/repo/map.js'
 import { noteLinks } from '../map/links.js'
 import { Recorder } from './record.js'
+import { formName } from '../map/normalise.js'
 import { render, snapshot, type Snapshot } from './snapshot.js'
 import * as act from './act.js'
 import type { BrowserPool } from './pool.js'
@@ -85,7 +86,14 @@ export class Session {
       })
     }
     for (const f of s.forms) {
-      const form = map.upsertForm(this.ctx.db, { page_id: pageId, name: f.name || f.action || null })
+      // A form's action carries an id — data-action="/api/invoices/22/status".
+      // Keyed on that, the same form is a new form for every invoice in the
+      // app: one run ended with sixty forms where there are ten, its
+      // field-tried state split twenty-five ways, and every copy scoring as
+      // never-tried. So the identity of a form is its pattern, not its
+      // address.
+      const name = formName(f.name, f.action, (p) => this.ctx.patterns.pattern(p))
+      const form = map.upsertForm(this.ctx.db, { page_id: pageId, name })
       for (const fd of f.fields) {
         map.upsertField(this.ctx.db, { form_id: form.id, name: fd.name, type: fd.type, required: fd.required })
       }

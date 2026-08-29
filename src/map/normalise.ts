@@ -95,3 +95,21 @@ export function queryKeys(search: string): string[] {
   if (!search || search === '?') return []
   return [...new URLSearchParams(search).keys()].sort()
 }
+
+/**
+ * What to call a form. Its own name if it has one, otherwise the shape of
+ * where it posts — never the concrete address, because an address with an id
+ * in it makes one form look like one form per row.
+ */
+export function formName(name: string, action: string, pattern: (p: string) => string): string | null {
+  const named = (name ?? '').trim()
+  if (named) return named.slice(0, 80)
+  const target = (action ?? '').trim()
+  if (!target) return null
+  try {
+    const u = new URL(target, 'http://x')
+    return pattern(u.pathname).slice(0, 80)
+  } catch {
+    return target.slice(0, 80)
+  }
+}
