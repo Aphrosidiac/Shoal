@@ -4,8 +4,12 @@
   "description": "A swarm of agents that use your app until it breaks",
   "license": "MIT",
   "type": "module",
-  "bin": { "shoal": "./dist/cli.js" },
-  "engines": { "node": ">=20" },
+  "bin": {
+    "shoal": "./dist/cli.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx src/cli.ts",
@@ -19,14 +23,16 @@
     "@modelcontextprotocol/sdk": "^1.0.0",
     "better-sqlite3": "^13.0.3",
     "fastify": "^5.0.0",
+    "mailparser": "^3.7.0",
     "playwright": "^1.62.0",
     "smtp-server": "^3.13.0",
-    "mailparser": "^3.7.0",
     "undici": "^7.0.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.0",
+    "@types/mailparser": "^3.4.6",
     "@types/node": "^22.0.0",
+    "@types/smtp-server": "^3.5.13",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
   }

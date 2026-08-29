@@ -10,11 +10,36 @@ to find.
 You write nothing. No test files, no describing your app, no listing your
 routes. A URL is the whole setup.
 
+## Try it
+
+```bash
+npm install
+npx playwright install chromium
+
+# a deliberately broken app on :4100, with eleven known bugs in it
+npm run fixture
+
+# in another terminal
+echo '{"url":"http://localhost:4100",
+       "driver":{"provider":"openai-compatible","baseUrl":"http://localhost:11434/v1",
+                 "model":"qwen3:1.7b","extra":{"reasoning_effort":"none"}}}' > shoal.config.json
+npx tsx src/cli.ts doctor
+npx tsx src/cli.ts run --for 30m
+```
+
+The dashboard is on <http://localhost:7717>. `shoal report` prints what it
+found; `shoal bench` runs it against the fixture and scores itself.
+
+Set `driver.provider` to `anthropic` (and `ANTHROPIC_API_KEY`) if you would
+rather pay than run a model locally. Either way it only ever talks to
+localhost.
+
 ## Status
 
-Designed, not built. Everything in `docs/` is agreed; `src/` is a skeleton with
-a finished `store/schema.sql` and nothing else. Start at
-[docs/start-here.md](docs/start-here.md).
+Built and running. It signs itself up on an app it has never seen, maps it,
+hammers it, and reports what reproduced. `fixtures/leaky/BENCH.md` is the
+honest record: every score it has ever produced against an app whose bugs are
+known in advance, including the ones it missed.
 
 The repo history contains an earlier, different tool that was deleted on
 purpose — see [docs/idea.md](docs/idea.md) for why.
@@ -83,6 +108,6 @@ The design proper:
 - [docs/cli.md](docs/cli.md) — commands, config, packaging, privacy
 - [docs/build-order.md](docs/build-order.md) — six milestones, and the three that can kill it
 - [docs/risks.md](docs/risks.md) — what will go wrong
-- [docs/decisions.md](docs/decisions.md) — 57 settled decisions; the index of what is agreed
+- [docs/decisions.md](docs/decisions.md) — what is settled, and what changed on contact with the machine
 
 **[docs/start-here.md](docs/start-here.md) — what to do on day one.**

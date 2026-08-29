@@ -123,7 +123,17 @@ function wireForm(f) {
     })
     const headers = {}
     if (f.dataset.idem) headers['Idempotency-Key'] = f.dataset.idemKey || (f.dataset.idemKey = 'idem-' + Math.random().toString(36).slice(2, 10))
-    const r = await api(f.dataset.method || 'POST', f.dataset.action, body, headers)
+    const method = f.dataset.method || 'POST'
+    let action = f.dataset.action
+    let payload = body
+    if (method === 'GET' || method === 'HEAD') {
+      const q = new URLSearchParams()
+      Object.keys(body).forEach(k => q.set(k, body[k]))
+      const qs = q.toString()
+      if (qs) action = action + (action.indexOf('?') >= 0 ? '&' : '?') + qs
+      payload = undefined
+    }
+    const r = await api(method, action, payload, headers)
     if (!r.ok) { msg((r.data && r.data.error) || ('failed with ' + r.status), true); return }
     msg('Saved.')
     if (f.dataset.redirect) { location.href = f.dataset.redirect.replace(':id', (r.data && r.data.id) || ''); return }

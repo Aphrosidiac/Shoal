@@ -1,21 +1,27 @@
 # Start here
 
-The design is done. This is what to do on day one.
+The design is done and so is the build. This file was written before either,
+as the day-one plan; it is kept because the order it lays out turned out to be
+the right one, and because the three questions at the bottom are still the
+three questions.
+
+**Where things actually are:** everything below is built. `src/` is the tree in
+[modules.md](modules.md), `fixtures/leaky/` is the app with the planted bugs in
+it, and `fixtures/leaky/BENCH.md` is the running record of what Shoal scores
+against it. What changed on contact with the machine is at the bottom of
+[decisions.md](decisions.md).
 
 ## The repo as it stands
 
 ```
 README.md
-docs/                    the design, 18 files. decisions.md is the index of what is settled
+docs/                    the design. decisions.md is the index of what is settled
 package.json             deps chosen, scripts wired
 tsconfig.json            strict, NodeNext, ES2023
 shoal.config.example.json
-src/                     directory skeleton + store/schema.sql (complete, ready to run)
-fixtures/leaky/          BUGS.md written; the app itself is the first thing to build
+src/                     the whole tool
+fixtures/leaky/          the broken app, its BUGS.md, and BENCH.md
 ```
-
-Nothing is implemented. `src/store/schema.sql` is real and finished — every
-other file under `src/` is an empty directory waiting for M1.
 
 ## Before writing any Shoal code, build the fixture
 
@@ -50,6 +56,9 @@ how it ends up with holes.
 pages, and `shoal bench` prints five numbers — then the same run against a
 local driver, and the gap between the two is the honest answer about local
 models.
+
+That gate was met, with one thing it could not answer: see the note at the top
+of [../fixtures/leaky/BENCH.md](../fixtures/leaky/BENCH.md).
 
 ## The three questions that can kill this
 

@@ -1,0 +1,16 @@
+{
+  "note": "How `shoal bench` scores itself. Shoal never reads this; the bench harness does. A finding that matches an entry counts as found; a finding that matches nothing is a false positive.",
+  "bugs": [
+    { "bug": 1,  "check": "race.lostupdate",   "endpoint": "POST /api/invoices/:id/payments", "why": "paid_amt read-then-write with no lock" },
+    { "bug": 2,  "check": "money.overpaid",    "endpoint": "POST /api/invoices/:id/payments", "why": "no outstanding-balance guard" },
+    { "bug": 3,  "check": "leak.crossaccount", "endpoint": "GET /api/orders/:id",             "why": "never scoped by account" },
+    { "bug": 4,  "check": "paging.walk",       "endpoint": "GET /api/orders",                 "why": "offset skips a row per page boundary" },
+    { "bug": 5,  "check": "wrong.readback",    "endpoint": "PATCH /api/customers/:id",        "why": "phone echoed but never written" },
+    { "bug": 6,  "check": "fault.5xx",         "endpoint": "GET /api/reports/summary",        "why": "malformed date 500s instead of 400" },
+    { "bug": 7,  "check": "wrong.consistency", "endpoint": "GET /api/invoices/:id",           "why": "status stored by one route, derived by another" },
+    { "bug": 8,  "check": "idempotency.double","endpoint": "POST /api/orders",                "why": "Idempotency-Key ignored" },
+    { "bug": 9,  "check": "auth.role",         "endpoint": "GET /api/admin/export",           "why": "no role check" },
+    { "bug": 10, "check": "slow",              "endpoint": "GET /api/orders",                 "why": "unbounded, quadratic past ~300 rows" },
+    { "bug": 11, "check": "fault.stack",       "endpoint": "*",                               "why": "500 body carries the raw stack" }
+  ]
+}

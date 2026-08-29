@@ -3,5 +3,8 @@ dist/
 .shoal/
 shoal.config.json
 fixtures/leaky/*.db
+fixtures/leaky/*.db-shm
+fixtures/leaky/*.db-wal
+.bench/
 *.log
 .DS_Store

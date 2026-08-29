@@ -273,5 +273,5 @@ app.setNotFoundHandler(async (req, reply) => {
   return reply.code(404).type('text/html').send(page({ nav: false, title: 'Not found', body: '<p><a href="/">Back to the home page</a></p>' }))
 })
 
-await app.listen({ port: PORT, host: '127.0.0.1' })
+await app.listen({ port: PORT, host: '::' })
 console.log(`leaky listening on http://localhost:${PORT}`)

@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS pages (
   url_pattern   TEXT NOT NULL,
   title         TEXT,
   screen_fp     TEXT NOT NULL UNIQUE,
+  example_url   TEXT,                        -- a real address this screen was seen at
   requires_auth INTEGER NOT NULL DEFAULT 1,
   visits        INTEGER NOT NULL DEFAULT 0,
   explored      INTEGER NOT NULL DEFAULT 0,

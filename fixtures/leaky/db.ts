@@ -88,7 +88,7 @@ CREATE TABLE IF NOT EXISTS slots (
 
 if ((db.prepare('SELECT COUNT(*) c FROM slots').get() as { c: number }).c === 0) {
   const ins = db.prepare('INSERT INTO slots (label, capacity, booked) VALUES (?, ?, 0)')
-  for (const l of ['mon-am', 'mon-pm', 'tue-am', 'tue-pm', 'wed-am']) ins.run(l, 3)
+  for (const l of ['mon-am', 'mon-pm', 'tue-am', 'tue-pm', 'wed-am']) ins.run(l, 25)
 }
 
 export const now = () => Math.floor(Date.now() / 1000)

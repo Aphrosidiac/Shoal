@@ -32,10 +32,29 @@ explicit act, because throwing away a day of mapping by accident is not a
 mistake anyone should be able to make in one keystroke.
 
 Flags: `--explorers` `--hammerers` `--confirmers` `--for` `--pace`
-`--budget` `--driver` `--planner` `--no-ui` `--redact` `--verbose`
+`--budget` `--driver` `--planner` `--no-ui` `--redact` `--verbose` `--headed`
+
+`--headed` opens the browser windows so you can watch, which is worth ninety
+seconds once and never again.
 
 `--for` accepts `30m`, `24h`, or nothing at all, in which case it runs until
 stopped.
+
+### `bench`
+
+```
+shoal bench --for 30m --label "what changed"
+```
+
+Starts `fixtures/leaky` on :4100 by itself, runs against it, scores what it
+confirmed against the planted bugs, and appends the five numbers to
+`fixtures/leaky/BENCH.md`. `--append false` to keep it out of the history,
+`--report` to print the whole report, `--provider`/`--driver`/`--baseUrl` to
+score a different model against the same app.
+
+It reads the driver and planner out of the `shoal.config.json` where you ran
+it, not out of the scratch directory it wipes — a bench that quietly falls back
+to different models is not an instrument.
 
 ### `doctor`
 
