@@ -9,7 +9,7 @@ so `shoal bench` can be scored against something known. See
 | 1 | `paid_amt` updated read-then-write with no lock | `routes/payments.ts` | race + read-back |
 | 2 | no outstanding-balance guard — an invoice accepts more than it is owed | `routes/payments.ts` | money |
 | 3 | `GET /api/orders/:id` never scopes by account | `routes/orders.ts` | leak |
-| 4 | orders paged by `created_at` with OFFSET, non-unique | `routes/orders.ts` | paging |
+| 4 | orders paged by `created_at` with OFFSET; the offset skips a row at every page boundary | `routes/orders.ts` | paging |
 | 5 | `PATCH /api/customers/:id` silently drops `phone` | `routes/customers.ts` | read-back |
 | 6 | a malformed date returns 500, not 400 | `routes/reports.ts` | fault |
 | 7 | status written directly by one route, derived by another | `routes/invoices.ts` | wrong |
@@ -21,6 +21,20 @@ so `shoal bench` can be scored against something known. See
 #1 needs genuine concurrency. #10 is fast on an empty database, so a run that
 never accumulates data will never see it. Those two are the ones that prove the
 harder half of the design works.
+
+Two notes from building it:
+
+**#4.** A non-unique `ORDER BY` is the root cause in the real world, but SQLite
+breaks ties on rowid and does it the same way every time, so `ORDER BY
+created_at` alone paginates perfectly and the bug never fires. The route keeps
+the non-unique sort and adds the defect it normally produces — the offset skips
+one row at every page boundary after the first — so a list walk misses rows
+deterministically. The check under test is unchanged: walk every page, every
+row should appear exactly once.
+
+**#10.** Verified by hand: 35 orders 0ms, 355 orders 577ms, 655 orders 2105ms.
+The slow threshold is 1500ms, so it takes roughly five hundred accumulated
+orders before this is visible at all.
 
 ## Deliberately NOT bugs
 

@@ -81,3 +81,13 @@ Everything that was open at design level is now decided. What is left is
   against the fixture, where a change can be measured instead of felt.
 - **Does unaided signup work across real apps?** M1's whole risk. OAuth-only
   and invite-only apps are out of scope until told otherwise.
+
+## Corrected while building
+
+Recorded here rather than edited away, because a design that changed on contact
+with the machine is worth seeing.
+
+| # | Was | Is | Why |
+|---|---|---|---|
+| 58 | `better-sqlite3 ^11` | `better-sqlite3 ^13` | v11 has no prebuild for Node 26 and does not compile against that V8. v13 has prebuilds and still supports Node 20 |
+| 59 | Fixture bug #4 is a non-unique `ORDER BY` | non-unique `ORDER BY` **plus** an offset that skips a row at each page boundary | SQLite breaks ties on rowid deterministically, so the non-unique sort alone paginates perfectly and the planted bug never fires. The check being tested is unchanged |
