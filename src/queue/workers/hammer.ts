@@ -7,6 +7,7 @@ import * as map from '../../store/repo/map.js'
 import { volley, spread, type Shot, type ShotSpec } from '../../replay/barrier.js'
 import { decide, type Attempt, type ReproStep } from '../../replay/verdict.js'
 import { endpointLabel } from '../../watch/index.js'
+import * as findings from '../../store/repo/findings.js'
 import { findingFp } from '../../map/fingerprint.js'
 import { firstObject, parse } from '../../watch/types.js'
 import { pathOf, readBackUrl } from '../../replay/probes.js'
@@ -36,6 +37,24 @@ export async function runHammer(ctx: Ctx, rp: Replayer, item: Item): Promise<str
 
   const label = endpointLabel(ctx, p.endpointId)
   map.markHammered(ctx.db, p.endpointId)
+
+  // Already proven here. Later rounds still fire — hammering is also how the
+  // app accumulates the rows that other checks need — but re-running a
+  // five-attempt verdict and a shrink on a finding we already have burns the
+  // confirmers that everything else is queued behind, and adds nothing but a
+  // counter. One volley, recorded, and out.
+  const known = findings.byFingerprint(ctx.db, findingFp(label, 'race.lostupdate', p.shape))
+  if (known && known.state === 'open') {
+    const rec2 = pickSeed(ctx, p.endpointId)
+    if (rec2) {
+      const waveId = `wave-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      const shots = buildShots(ctx, rec2, p.shape, WAVE)
+      live.hammer({ endpoint: label, shape: p.shape, workers: shots.length, at: Date.now() })
+      await volley(ctx, shots, waveId)
+      findings.touch(ctx.db, known.fingerprint, null)
+    }
+    return `${p.shape}: already known here, fired anyway for the data`
+  }
 
   let width = WAVE
   let unhammerable = false

@@ -248,3 +248,46 @@ were accepted... 1 of the 8 accepted writes landed"* — it had rewritten the
 wave size in the old run's sentence and left the rest describing the run it
 threw away. A repro that contradicts itself is worse than a long one, so the
 shrunk wave now supplies its own account of what happened.
+
+## 2026-08-29 — the dashboard half of the M6 gate
+
+The M6 gate has four parts and one of them does not need a day: *dashboard
+matching docs/ui-mockup.html*. Checked against the live 24-hour run rather than
+a screenshot of an empty one.
+
+Structural, against the mockup file:
+
+```
+mockup classes: 82        never emitted by the live dashboard: none
+mockup nav tabs: now findings map accounts log
+live   nav tabs: now findings map accounts log
+mockup counters: Pages Endpoints Fields poked Accounts Findings Frontier Calls/action Spend
+live   counters: Pages Endpoints Fields poked Accounts Findings Frontier Calls/action Spend
+```
+
+Every one of the mockup's structural classes — `.railfoot .counters .grid2
+.panel .ex .feed .ham .f .cat .repro .meta .btn .unconf .bar .tag .never .log
+.pinned` — is emitted. The live page has one class the mockup does not,
+`.stale`, which is the "live stream dropped, polling" indicator a static
+mockup had no need for.
+
+All five views were then rendered against real data from the running job: the
+counter strip and explorer cards and request feed, the ranked findings list,
+the map with untouched rows first, the accounts table carrying the tenancy
+verdict and what it means, and the log.
+
+And the log paid for itself immediately. It showed the same race being
+confirmed and shrunk over and over, once per hammer round —
+
+```
+07:40  SHRINK   POST /api/invoices/:id/payments still loses writes with 2 at once, down from 8
+07:40  FINDING  RACE POST /api/invoices/:id/payments loses writes when they overlap (3/3)
+07:40  SHRINK   ...
+07:40  FINDING  ...
+```
+
+No duplicate rows, because the finding fingerprint folds them into a counter.
+But every round was spending a five-attempt verdict and a shrink on something
+already proven, and those are the confirmers that every other suspicion is
+queued behind. Later rounds now fire the volley and stop there, which keeps
+the data accumulating without re-litigating the finding.
