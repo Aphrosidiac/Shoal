@@ -17,10 +17,10 @@ are from real runs whose full output is in
 | **M3** — ≥6 of 11 with zero false positives | **met.** 6 of 11, 0 false positives, 30m 8s |
 | **M4** — catches fixture bug #1, the race | **met.** 3/3, shrunk from 8 concurrent requests to 2 |
 | **M5** — personas, missions, cross-account | built and running. The tenant leak comes through the cross-account path |
-| **M6** — 24h unattended, ≥9 of 11 | **components met, the number outstanding.** Dashboard, budget, throttle, shrink, restart handling, status and resume are each verified with output. The 24-hour run itself was still going when this was written |
+| **M6** — 24h unattended, ≥9 of 11 | **not met.** Every component is verified with output — dashboard, budget, throttle, shrink, restart handling, status, resume — but the 24-hour run was stopped at 1.2 hours by request. Best figure on this code: **8 of 11, zero false positives**, held from ten minutes to thirty-one |
 
-One gate is outstanding and one leg of M1 is unmeasurable here. Both are
-written up rather than worked around.
+One gate is unmet, one leg of M1 is unmeasurable here, and neither is dressed
+up as anything else.
 
 ---
 
@@ -76,17 +76,25 @@ shrinking, app-restart detection, and `run`/`stop`/`resume` on one SQLite file.
 
 ## What does not work
 
+**M6 was never run to completion.** The longest run was 1.2 hours of the
+twenty-four the gate asks for. Eight of eleven were reached repeatedly with no
+false positives; the ninth was always going to be #10, and #10 is the one bug
+in the fixture that exists to prove a short run cannot see everything. That
+leaves the gate not met and not disproved, which is the only honest thing to
+say about it.
+
 **Two of the eleven need hours and cannot be hurried.** #10 is an unbounded
 query that is fast until roughly six hundred rows exist, and #4 is a paging
 hole that needs more rows than fit on a page. They are in the fixture
 deliberately, to make the point that a short run cannot see everything, and a
 short run duly cannot see them.
 
-**Recall swings between runs.** 6, 5, 5, 3 across four thirty-minute runs, with
-the code improving throughout — because what gets found in thirty minutes
-depends on which forms the queue happens to drain first, and thirty minutes is
-not long enough for the scoring tilt to swing from exploring to hammering. Two
-runs is not a sample. The long run is the answer to this, not more short ones.
+**Recall swings between runs.** 6, 5, 5, 3 across four thirty-minute runs early
+on, and 8, 8, 5 across three later ones on much better code — because what gets
+found in the first hour depends on which forms the queue happens to drain
+first. The last run had five findings at 1.2 hours where the one before it had
+eight at ten minutes, on identical code. The long run is the answer to that,
+not more short ones.
 
 **Model calls per action rose across the session**, 0.07 to 0.65. Not the cache
 failing — it reflects more novel screens and more forms per unit of work — but
@@ -190,7 +198,7 @@ working an account no explorer is currently holding.
 
 Three things, in order of value:
 
-1. **Run it for a day.** Two of the eleven planted bugs cannot exist on a small
+1. **Run it for a day.** It has never been done. Two of the eleven planted bugs cannot exist on a small
    database, by construction. A short run cannot answer the question the whole
    design is built around, and every attempt to make it do so failed.
 2. **Measure it against a good model.** This machine has no `ANTHROPIC_API_KEY`

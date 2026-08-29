@@ -41,9 +41,16 @@ export async function runBench(flags: Flags): Promise<number> {
   mkdirSync(dir, { recursive: true })
 
   const fixture = await startFixture()
+  let stopped = false
   const stop = (): void => { try { fixture.kill('SIGKILL') } catch { /* gone */ } }
   process.once('exit', stop)
-  process.once('SIGINT', () => { stop(); process.exit(130) })
+  for (const sig of ['SIGINT', 'SIGTERM'] as const) {
+    process.once(sig, () => {
+      stopped = true
+      stop()
+      process.exit(130)
+    })
+  }
   const t0 = Date.now()
   try {
     // Read the driver and planner from wherever the user ran `shoal bench`,
@@ -72,6 +79,14 @@ export async function runBench(flags: Flags): Promise<number> {
   }
 
   const wall = Date.now() - t0
+  // A run that was killed has nothing to say. The summary below scores against
+  // whatever is on disk now, and for an interrupted run that is not what it
+  // saw — six entries in BENCH.md read `found 0 of 11, requests 0` for runs
+  // that had five to eight findings when they were stopped.
+  if (stopped) {
+    process.stdout.write(`\nStopped after ${Math.round(wall / 60000)}m. No score written: an interrupted run has not measured anything.\n`)
+    return 0
+  }
   const db = openReadOnly(dir)
   const report = build(db, `http://localhost:${PORT}`)
   const eps = new Map(map.endpoints(db).map((e) => [e.id, `${e.method} ${e.path_pattern}`]))
