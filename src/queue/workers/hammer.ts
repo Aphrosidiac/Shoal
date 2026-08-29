@@ -164,17 +164,45 @@ async function attempt(ctx: Ctx, rp: Replayer, rec: Recording, shape: string, wi
 
   // Calibrate: what does exactly one of these writes do? Everything after this
   // is measured against the app's own behaviour, not against an assumption.
-  const one = await rp.replay(rec)
-  if (one.status < 200 || one.status >= 300) {
-    return { verdict: 'inconclusive', steps: [], recordingIds: [], why: `a single write answers ${one.status}, so there is nothing to race` }
+  //
+  // Twice, and the two have to agree. Fifteen other workers are using this app
+  // at the same time, so a single measurement of "what one write does" picks
+  // up whatever else happened in that window. One run measured a create as
+  // moving `total` by ten — one from us and nine from everybody else — then
+  // expected eight concurrent creates to move it by eighty, saw eight, and
+  // reported a create endpoint as losing writes. A measurement you cannot
+  // repeat is not a measurement.
+  const step = async (): Promise<Snap | null> => {
+    const one = await rp.replay(rec)
+    if (one.status < 200 || one.status >= 300) return null
+    return read()
   }
-  const middle = await read()
-  if (!middle) return { verdict: 'inconclusive', steps: [], recordingIds: [], why: 'could not read the object back' }
 
-  const delta: Snap = {}
-  for (const [k, v] of Object.entries(middle)) {
+  const first = await step()
+  if (!first) return { verdict: 'inconclusive', steps: [], recordingIds: [], why: 'a single write did not succeed, so there is nothing to race' }
+  const second = await step()
+  if (!second) return { verdict: 'inconclusive', steps: [], recordingIds: [], why: 'a single write did not succeed, so there is nothing to race' }
+
+  const deltaA: Snap = {}
+  for (const [k, v] of Object.entries(first)) {
     const d = v - (before[k] ?? 0)
-    if (Math.abs(d) > 1e-9) delta[k] = d
+    if (Math.abs(d) > 1e-9) deltaA[k] = d
+  }
+  const middle = second
+  const delta: Snap = {}
+  for (const [k, a] of Object.entries(deltaA)) {
+    const b = (second[k] ?? 0) - (first[k] ?? 0)
+    // Same field, same movement, twice running. Anything else means someone
+    // else is writing here too and the arithmetic below cannot be trusted.
+    if (Math.abs(a - b) < 1e-9) delta[k] = a
+  }
+  if (Object.keys(deltaA).length && !Object.keys(delta).length) {
+    return {
+      verdict: 'inconclusive',
+      steps: [],
+      recordingIds: [],
+      why: `two identical writes moved ${pathOf(objectUrl)} by different amounts (${Object.entries(deltaA).map(([k, v]) => `${k}+${v}`).join(' ')} then ${Object.entries(deltaA).map(([k]) => `${k}+${(second[k] ?? 0) - (first[k] ?? 0)}`).join(' ')}), so something else is writing here and the count proves nothing`,
+    }
   }
   if (!Object.keys(delta).length) {
     return {
