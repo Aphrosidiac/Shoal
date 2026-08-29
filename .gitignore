@@ -1,8 +1,7 @@
 node_modules/
-charts/*
-!charts/.gitkeep
+dist/
+.shoal/
+shoal.config.json
+fixtures/leaky/*.db
 *.log
 .DS_Store
-shoal.local.json
-targets/*
-!targets/example/

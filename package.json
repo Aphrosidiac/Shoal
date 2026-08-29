@@ -1,21 +1,33 @@
 {
   "name": "shoal",
-  "version": "0.1.0",
-  "private": true,
+  "version": "0.0.0",
+  "description": "A swarm of agents that use your app until it breaks",
+  "license": "MIT",
   "type": "module",
-  "description": "Finds where software runs aground: a swarm of concurrent actors, a stack of soundings, a shrinker.",
+  "bin": { "shoal": "./dist/cli.js" },
+  "engines": { "node": ">=20" },
   "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.ts",
     "shoal": "tsx src/cli.ts",
+    "fixture": "tsx fixtures/leaky/server.ts",
+    "bench": "tsx src/cli.ts bench",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "pg": "^8.13.1",
-    "playwright-core": "^1.62.1"
+    "@anthropic-ai/sdk": "^0.70.0",
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "better-sqlite3": "^11.0.0",
+    "fastify": "^5.0.0",
+    "playwright": "^1.62.0",
+    "smtp-server": "^3.13.0",
+    "mailparser": "^3.7.0",
+    "undici": "^7.0.0"
   },
   "devDependencies": {
-    "@types/node": "^22.15.18",
-    "@types/pg": "^8.11.10",
-    "tsx": "^4.19.4",
-    "typescript": "^5.8.3"
+    "@types/better-sqlite3": "^7.6.0",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
   }
 }

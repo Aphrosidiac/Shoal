@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Shoal — dashboard mockup</title>
+<style>
+:root{
+  --bg:#0b0d0f; --panel:#111417; --panel2:#15191d; --line:#1e2429;
+  --tx:#c9d1d6; --dim:#6b7780; --dimmer:#454f57;
+  --accent:#3ddad0; --accent-dim:#1c5b57;
+  --leak:#ff5c7a; --loss:#ff8a3d; --money:#ffc94d; --race:#b98cff;
+  --auth:#5aa9ff; --fault:#ff6b6b; --wrong:#7fd67f; --slow:#8a93a0;
+  --ok:#4ec97a; --warn:#e8b84b; --bad:#ff5c7a;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  background:var(--bg); color:var(--tx);
+  font:13px/1.5 var(--mono);
+  display:grid; grid-template-columns:196px 1fr; height:100vh; overflow:hidden;
+}
+
+/* ---------- rail ---------- */
+.rail{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:14px 0}
+.brand{padding:2px 16px 18px;display:flex;align-items:center;gap:9px}
+.brand svg{display:block}
+.brand b{font-size:14px;letter-spacing:.14em;font-weight:600;color:#e8eef1}
+.nav{display:flex;flex-direction:column;gap:1px;padding:0 8px}
+.nav button{
+  all:unset;cursor:pointer;padding:7px 10px;border-radius:5px;color:var(--dim);
+  display:flex;justify-content:space-between;align-items:center;font-size:12.5px;
+}
+.nav button:hover{background:var(--panel2);color:var(--tx)}
+.nav button[aria-selected=true]{background:var(--panel2);color:#e8eef1;box-shadow:inset 2px 0 0 var(--accent)}
+.nav .n{color:var(--dimmer);font-size:11px}
+.nav button[aria-selected=true] .n{color:var(--accent)}
+.railfoot{margin-top:auto;padding:14px 16px 2px;border-top:1px solid var(--line);font-size:11.5px;color:var(--dim)}
+.railfoot .row{display:flex;justify-content:space-between;padding:2.5px 0}
+.railfoot b{color:var(--tx);font-weight:500}
+.live{display:inline-flex;align-items:center;gap:6px;color:var(--accent)}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 0 var(--accent-dim);animation:p 2.4s ease-out infinite}
+@keyframes p{0%{box-shadow:0 0 0 0 rgba(61,218,208,.45)}70%{box-shadow:0 0 0 7px rgba(61,218,208,0)}100%{box-shadow:0 0 0 0 rgba(61,218,208,0)}}
+
+/* ---------- main ---------- */
+.main{overflow:auto;padding:18px 22px 40px}
+.view{display:none}.view.on{display:block}
+h2{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);font-weight:600;margin:26px 0 10px}
+h2:first-child{margin-top:2px}
+.sub{color:var(--dimmer);font-size:11.5px;font-weight:400;letter-spacing:0;text-transform:none;margin-left:8px}
+
+/* counters */
+.counters{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.counter{background:var(--panel);padding:11px 13px}
+.counter .k{color:var(--dimmer);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase}
+.counter .v{font-size:19px;color:#e8eef1;margin-top:3px;letter-spacing:-.01em}
+.counter .v small{font-size:11.5px;color:var(--dim);letter-spacing:0}
+
+.grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:16px;align-items:start}
+@media (max-width:1080px){.grid2{grid-template-columns:1fr}}
+
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.panel .hd{padding:8px 12px;border-bottom:1px solid var(--line);color:var(--dim);font-size:11px;letter-spacing:.12em;text-transform:uppercase;display:flex;justify-content:space-between}
+
+/* explorer cards */
+.ex{padding:10px 12px;border-bottom:1px solid var(--line)}
+.ex:last-child{border-bottom:0}
+.ex .top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.ex .who{color:#e8eef1}
+.ex .acct{color:var(--dimmer);font-size:11.5px}
+.ex .state{font-size:11px;padding:1px 7px;border-radius:20px;border:1px solid}
+.st-think{color:var(--accent);border-color:var(--accent-dim)}
+.st-act{color:var(--wrong);border-color:#2c4a2c}
+.st-stuck{color:var(--warn);border-color:#4a3d1c}
+.ex .where{color:var(--dim);margin-top:5px;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ex .did{color:var(--dimmer);font-size:11.5px;margin-top:2px}
+.ex .goal{color:var(--dimmer);font-size:11.5px;margin-top:4px;padding-top:5px;border-top:1px dashed var(--line)}
+
+/* feed */
+.feed{max-height:340px;overflow:auto;font-size:12px}
+.feed .r{display:grid;grid-template-columns:52px 1fr 42px 52px 62px;gap:8px;padding:3.5px 12px;border-bottom:1px solid rgba(30,36,41,.55);align-items:baseline}
+.feed .r:hover{background:var(--panel2)}
+.m{color:var(--dim)}
+.m.POST,.m.PUT,.m.PATCH,.m.DELETE{color:var(--money)}
+.p{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tx)}
+.s{text-align:right}.s.ok{color:var(--ok)}.s.warn{color:var(--warn)}.s.bad{color:var(--bad)}
+.ms{text-align:right;color:var(--dimmer)}
+.w{color:var(--dimmer);text-align:right;font-size:11px}
+
+/* hammer */
+.ham{padding:9px 12px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.ham:last-child{border-bottom:0}
+.ham .ep{color:var(--tx)}
+.ham .shape{font-size:11px;color:var(--dimmer);border:1px solid var(--line);padding:1px 6px;border-radius:3px}
+
+/* findings */
+.f{border:1px solid var(--line);border-radius:7px;background:var(--panel);margin-bottom:8px;overflow:hidden}
+.f>summary{padding:11px 13px;cursor:pointer;list-style:none;display:grid;grid-template-columns:26px 92px 1fr auto auto;gap:12px;align-items:center}
+.f>summary::-webkit-details-marker{display:none}
+.f>summary:hover{background:var(--panel2)}
+.f .id{color:var(--dimmer)}
+.cat{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;padding:2px 7px;border-radius:3px;text-align:center;border:1px solid}
+.cat.leak{color:var(--leak);border-color:#4d2230;background:#1d1216}
+.cat.loss{color:var(--loss);border-color:#4a2e18;background:#1c1410}
+.cat.money{color:var(--money);border-color:#463a15;background:#1b1810}
+.cat.race{color:var(--race);border-color:#382b52;background:#16131d}
+.cat.auth{color:var(--auth);border-color:#1f3a5c;background:#101620}
+.cat.fault{color:var(--fault);border-color:#4a2424;background:#1c1212}
+.cat.wrong{color:var(--wrong);border-color:#274527;background:#111a11}
+.f .ttl{color:#e8eef1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.f .conf{color:var(--dim);font-size:11.5px}
+.f .conf b{color:var(--ok);font-weight:500}
+.f .conf.part b{color:var(--warn)}
+.f .reach{color:var(--dimmer);font-size:11.5px}
+.f .body{padding:2px 13px 14px 13px;border-top:1px solid var(--line)}
+.f p{color:var(--dim);margin:11px 0;max-width:74ch;line-height:1.65}
+.repro{background:#0d1013;border:1px solid var(--line);border-radius:5px;padding:9px 11px;margin:10px 0}
+.repro .rl{display:grid;grid-template-columns:16px 52px 1fr 74px 40px;gap:9px;padding:2.5px 0;align-items:baseline}
+.repro .n{color:var(--dimmer)}
+.repro .as{color:var(--dimmer);font-size:11.5px}
+.repro .note{color:var(--leak);font-size:11.5px;margin-top:6px;padding-top:6px;border-top:1px dashed var(--line)}
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:9px;margin-top:12px;font-size:11.5px}
+.meta .k{color:var(--dimmer);text-transform:uppercase;letter-spacing:.09em;font-size:10.5px}
+.meta .v{color:var(--tx);margin-top:2px}
+.btn{all:unset;cursor:pointer;border:1px solid var(--accent-dim);color:var(--accent);padding:5px 12px;border-radius:5px;font-size:12px;margin-top:12px;display:inline-block}
+.btn:hover{background:#0f1f1e}
+.unconf{border-top:1px solid var(--line);margin-top:22px;padding-top:12px}
+.unconf .u{display:grid;grid-template-columns:1fr 78px 88px;gap:10px;padding:4px 2px;color:var(--dim);font-size:12px;border-bottom:1px solid rgba(30,36,41,.5)}
+.unconf .u span:last-child{color:var(--dimmer);text-align:right}
+
+/* tables */
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;color:var(--dimmer);font-weight:500;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;padding:7px 12px;border-bottom:1px solid var(--line)}
+td{padding:6px 12px;border-bottom:1px solid rgba(30,36,41,.5)}
+tr:hover td{background:var(--panel2)}
+td.num{text-align:right;color:var(--dim)}
+.bar{height:4px;background:#1a2024;border-radius:2px;overflow:hidden;min-width:56px}
+.bar i{display:block;height:100%;background:var(--accent)}
+.bar.none i{background:#3a2f2f}
+.tag{font-size:10.5px;color:var(--dimmer);border:1px solid var(--line);padding:1px 5px;border-radius:3px}
+.never{color:var(--warn)}
+
+/* log */
+.log .l{display:grid;grid-template-columns:64px 92px 1fr;gap:12px;padding:5px 12px;border-bottom:1px solid rgba(30,36,41,.5);font-size:12px}
+.log .t{color:var(--dimmer)}
+.log .kind{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase}
+.k-starved{color:var(--warn)}.k-restart{color:var(--auth)}.k-limit{color:var(--loss)}
+.k-stuck{color:var(--dim)}.k-info{color:var(--dimmer)}
+.pinned{background:#1a1610;border:1px solid #4a3d1c;border-radius:6px;padding:10px 12px;margin-bottom:12px}
+.pinned .h{color:var(--warn);font-size:11px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:6px}
+.pinned .s{display:grid;grid-template-columns:1fr 60px 1fr;gap:10px;padding:2px 0;font-size:12px;color:var(--dim)}
+.note{color:var(--dimmer);font-size:11.5px;margin:8px 0 0;max-width:80ch;line-height:1.6}
+</style>
+</head>
+<body>
+
+<nav class="rail">
+  <div class="brand">
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="M2 13c2.2-1.6 4-1.6 6 0 2-1.6 3.8-1.6 6 0 1.4-1.1 2.7-1.5 4-1.2" stroke="#3ddad0" stroke-width="1.4" stroke-linecap="round"/>
+      <path d="M2 17c2.2-1.6 4-1.6 6 0 2-1.6 3.8-1.6 6 0" stroke="#1c5b57" stroke-width="1.4" stroke-linecap="round"/>
+      <path d="M11.5 3 17 6.2l-5.5 3.2V3Z" fill="#3ddad0"/><circle cx="13.2" cy="5.6" r=".8" fill="#0b0d0f"/>
+    </svg>
+    <b>SHOAL</b>
+  </div>
+  <div class="nav" role="tablist">
+    <button role="tab" aria-selected="true" data-v="now">Now</button>
+    <button role="tab" aria-selected="false" data-v="findings">Findings <span class="n">9</span></button>
+    <button role="tab" aria-selected="false" data-v="map">Map <span class="n">41</span></button>
+    <button role="tab" aria-selected="false" data-v="accounts">Accounts <span class="n">17</span></button>
+    <button role="tab" aria-selected="false" data-v="log">Log <span class="n">2</span></button>
+  </div>
+  <div class="railfoot">
+    <div class="row"><span class="live"><i class="dot"></i>running</span><b>6h 12m</b></div>
+    <div class="row"><span>target</span><b>:3000</b></div>
+    <div class="row"><span>driver</span><b>ollama</b></div>
+    <div class="row"><span>planner</span><b>claude&nbsp;code</b></div>
+    <div class="row"><span>spend</span><b>$0.00</b></div>
+    <div class="row"><span>build</span><b>a91f0c</b></div>
+  </div>
+</nav>
+
+<main class="main">
+
+<!-- ============ NOW ============ -->
+<section class="view on" id="now">
+  <h2>Now <span class="sub">http://localhost:3000 · 6h 12m · 3 explorers, 16 hammerers, 2 confirmers</span></h2>
+  <div class="counters">
+    <div class="counter"><div class="k">Pages</div><div class="v">38</div></div>
+    <div class="counter"><div class="k">Endpoints</div><div class="v">41 <small>/ 12 hammered</small></div></div>
+    <div class="counter"><div class="k">Fields poked</div><div class="v">88 <small>/ 140</small></div></div>
+    <div class="counter"><div class="k">Accounts</div><div class="v">17</div></div>
+    <div class="counter"><div class="k">Findings</div><div class="v">9 <small>+4 unconf</small></div></div>
+    <div class="counter"><div class="k">Frontier</div><div class="v">212</div></div>
+    <div class="counter"><div class="k">Calls / action</div><div class="v">0.14</div></div>
+    <div class="counter"><div class="k">Spend</div><div class="v">$0.00</div></div>
+  </div>
+
+  <div class="grid2" style="margin-top:16px">
+    <div>
+      <div class="panel">
+        <div class="hd"><span>Explorers</span><span>3 active</span></div>
+        <div class="ex">
+          <div class="top"><span class="who">crew-1</span><span class="state st-act">acting</span></div>
+          <div class="where">/invoices/2081 — clicking “Record payment”</div>
+          <div class="did">last: type(e12, “1300.00”) · 340ms</div>
+          <div class="goal">goal — get an invoice to fully paid · step 7/12 · acct #14</div>
+        </div>
+        <div class="ex">
+          <div class="top"><span class="who">crew-2</span><span class="state st-think">thinking</span></div>
+          <div class="where">/settings/team — 22 elements, new screen</div>
+          <div class="did">last: click(e4) → navigated</div>
+          <div class="goal">goal — invite a second user and check their access · acct #15</div>
+        </div>
+        <div class="ex">
+          <div class="top"><span class="who">scout-1</span><span class="state st-stuck">stuck 4/6</span></div>
+          <div class="where">/reports — same screen 4 turns running</div>
+          <div class="did">last: click(e9) → 400 “date range required”</div>
+          <div class="goal">mapping · will abandon at 6 · acct #3</div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:16px">
+        <div class="hd"><span>Hammerers</span><span>16 workers</span></div>
+        <div class="ham"><span class="ep">POST /api/invoices/:id/payments</span><span class="shape">same-row ×8</span></div>
+        <div class="ham"><span class="ep">POST /api/deliveries</span><span class="shape">shared-resource ×6</span></div>
+        <div class="ham"><span class="ep">PUT /api/sales-docs/:id ⇄ /status</span><span class="shape">cross-action ×2</span></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="hd"><span>Requests</span><span>41/s · live</span></div>
+      <div class="feed">
+        <div class="r"><span class="m POST">POST</span><span class="p">/api/invoices/2081/payments</span><span class="s ok">201</span><span class="ms">88ms</span><span class="w">ham-04</span></div>
+        <div class="r"><span class="m POST">POST</span><span class="p">/api/invoices/2081/payments</span><span class="s ok">201</span><span class="ms">91ms</span><span class="w">ham-05</span></div>
+        <div class="r"><span class="m POST">POST</span><span class="p">/api/invoices/2081/payments</span><span class="s ok">201</span><span class="ms">94ms</span><span class="w">ham-06</span></div>
+        <div class="r"><span class="m">GET</span><span class="p">/api/invoices/2081</span><span class="s ok">200</span><span class="ms">12ms</span><span class="w">ham-04</span></div>
+        <div class="r"><span class="m">GET</span><span class="p">/api/orders/4471</span><span class="s ok">200</span><span class="ms">9ms</span><span class="w">xacct-1</span></div>
+        <div class="r"><span class="m POST">POST</span><span class="p">/api/auth/register</span><span class="s ok">201</span><span class="ms">210ms</span><span class="w">crew-2</span></div>
+        <div class="r"><span class="m">GET</span><span class="p">/api/reports?range=</span><span class="s warn">400</span><span class="ms">7ms</span><span class="w">scout-1</span></div>
+        <div class="r"><span class="m">GET</span><span class="p">/api/orders?page=3</span><span class="s ok">200</span><span class="ms">1.9s</span><span class="w">crew-1</span></div>
+        <div class="r"><span class="m PATCH">PATCH</span><span class="p">/api/customers/812</span><span class="s ok">200</span><span class="ms">31ms</span><span class="w">crew-1</span></div>
+        <div class="r"><span class="m">GET</span><span class="p">/api/customers/812</span><span class="s ok">200</span><span class="ms">11ms</span><span class="w">crew-1</span></div>
+        <div class="r"><span class="m POST">POST</span><span class="p">/api/orders</span><span class="s bad">500</span><span class="ms">44ms</span><span class="w">crew-3</span></div>
+        <div class="r"><span class="m">GET</span><span class="p">/api/admin/export</span><span class="s ok">200</span><span class="ms">27ms</span><span class="w">xacct-2</span></div>
+        <div class="r"><span class="m">GET</span><span class="p">/invoices</span><span class="s ok">200</span><span class="ms">140ms</span><span class="w">crew-2</span></div>
+        <div class="r"><span class="m POST">POST</span><span class="p">/api/deliveries</span><span class="s ok">201</span><span class="ms">62ms</span><span class="w">ham-11</span></div>
+        <div class="r"><span class="m POST">POST</span><span class="p">/api/deliveries</span><span class="s warn">409</span><span class="ms">58ms</span><span class="w">ham-12</span></div>
+        <div class="r"><span class="m">GET</span><span class="p">/api/deliveries/day/2026-09-02</span><span class="s ok">200</span><span class="ms">18ms</span><span class="w">ham-11</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FINDINGS ============ -->
+<section class="view" id="findings">
+  <h2>Findings <span class="sub">9 confirmed · ranked by category, then confidence, then reachability</span></h2>
+
+  <details class="f" open>
+    <summary>
+      <span class="id">#7</span><span class="cat leak">leak</span>
+      <span class="ttl">Another account's order is readable by id</span>
+      <span class="conf">confirmed <b>5/5</b></span><span class="reach">3 steps</span>
+    </summary>
+    <div class="body">
+      <p>GET /api/orders/:id returns any order to any authenticated user. Account B (crew-2) read an
+      order created by account A (crew-1) and got the full body including the customer name and total.</p>
+      <div class="repro">
+        <div class="rl"><span class="n">1</span><span class="m POST">POST</span><span class="p">/api/auth/register</span><span class="as">as A</span><span class="s ok">201</span></div>
+        <div class="rl"><span class="n">2</span><span class="m POST">POST</span><span class="p">/api/orders</span><span class="as">as A</span><span class="s ok">201</span></div>
+        <div class="rl"><span class="n">3</span><span class="m">GET</span><span class="p">/api/orders/4471</span><span class="as">as B</span><span class="s bad">200</span></div>
+        <div class="note">should be 403 or 404 — shrunk from 214 requests</div>
+      </div>
+      <div class="meta">
+        <div><div class="k">Seen</div><div class="v">14 times</div></div>
+        <div><div class="k">First</div><div class="v">14:02 · a91f0c</div></div>
+        <div><div class="k">Last</div><div class="v">23:51 · a91f0c</div></div>
+        <div><div class="k">Recordings</div><div class="v">#8812 #8813 #9004 +11</div></div>
+      </div>
+      <button class="btn">Recheck against the app now</button>
+    </div>
+  </details>
+
+  <details class="f">
+    <summary>
+      <span class="id">#2</span><span class="cat money">money</span>
+      <span class="ttl">Concurrent payments accepted, only one counted</span>
+      <span class="conf">confirmed <b>4/5</b></span><span class="reach">6 steps</span>
+    </summary>
+    <div class="body">
+      <p>Four payments of RM 3,602 against invoice 2081 all returned 201. The invoice's paid figure
+      then read RM 7,204 — two of the four. RM 7,204 accepted and missing from the balance.</p>
+      <div class="repro">
+        <div class="rl"><span class="n">1</span><span class="m POST">POST</span><span class="p">/api/invoices/2081/payments ×4 simultaneously</span><span class="as">same-row</span><span class="s ok">201</span></div>
+        <div class="rl"><span class="n">2</span><span class="m">GET</span><span class="p">/api/invoices/2081</span><span class="as">read-back</span><span class="s bad">200</span></div>
+        <div class="note">paid_amt 7204 ≠ sum(payments) 14408 — shrunk from 253 requests, 2 waves</div>
+      </div>
+      <div class="meta">
+        <div><div class="k">Seen</div><div class="v">6 times</div></div>
+        <div><div class="k">First</div><div class="v">16:44 · a91f0c</div></div>
+        <div><div class="k">Last</div><div class="v">23:12 · a91f0c</div></div>
+        <div><div class="k">Recordings</div><div class="v">#7710 … +5</div></div>
+      </div>
+      <button class="btn">Recheck against the app now</button>
+    </div>
+  </details>
+
+  <details class="f">
+    <summary><span class="id">#4</span><span class="cat race">race</span>
+      <span class="ttl">Delivery window holds 7 jobs against a capacity of 4</span>
+      <span class="conf">confirmed <b>3/5</b></span><span class="reach">8 steps</span></summary>
+    <div class="body"><p>Six workers booking different jobs into one window all succeeded. The window's own
+      capacity check reads the count before inserting and takes no lock.</p></div>
+  </details>
+
+  <details class="f">
+    <summary><span class="id">#9</span><span class="cat auth">auth</span>
+      <span class="ttl">/api/admin/export answers 200 for a normal user</span>
+      <span class="conf">confirmed <b>5/5</b></span><span class="reach">2 steps</span></summary>
+    <div class="body"><p>The route is behind an admin link in the UI but the handler has no role guard.</p></div>
+  </details>
+
+  <details class="f">
+    <summary><span class="id">#1</span><span class="cat fault">fault</span>
+      <span class="ttl">Malformed date returns 500 with a stack trace</span>
+      <span class="conf">confirmed <b>5/5</b></span><span class="reach">4 steps</span></summary>
+    <div class="body"><p>A bad request is a 4xx. The body also carries the raw stack, which names the ORM and the file path.</p></div>
+  </details>
+
+  <details class="f">
+    <summary><span class="id">#6</span><span class="cat wrong">wrong</span>
+      <span class="ttl">PATCH /api/customers/:id silently drops phone</span>
+      <span class="conf">confirmed <b>5/5</b></span><span class="reach">5 steps</span></summary>
+    <div class="body"><p>200 returned, field never written. Read-back caught it; nothing else would have.</p></div>
+  </details>
+
+  <details class="f">
+    <summary><span class="id">#5</span><span class="cat wrong">wrong</span>
+      <span class="ttl">Paging orders loses one row and repeats another</span>
+      <span class="conf">confirmed <b>3/3</b></span><span class="reach">3 steps</span></summary>
+    <div class="body"><p>Ordered by a non-unique column with OFFSET. Thirty orders exist; twenty-nine were ever seen.</p></div>
+  </details>
+
+  <div class="unconf">
+    <h2 style="margin-top:0">Not confirmed <span class="sub">seen once, never reproduced — kept because a recurring one means something intermittent</span></h2>
+    <div class="u"><span>Quantity showed 1 after entering 12 on the confirm step</span><span>1 of 5</span><span>crew-1 · 19:04</span></div>
+    <div class="u"><span>Totals row disagreed with the sum of the visible lines</span><span>0 of 5</span><span>crew-3 · 20:22</span></div>
+    <div class="u"><span>Session appeared to expire and then un-expire</span><span>0 of 5</span><span>crew-2 · 21:47</span></div>
+    <div class="u"><span>Search returned a deleted customer</span><span>1 of 5</span><span>crew-1 · 22:30</span></div>
+  </div>
+</section>
+
+<!-- ============ MAP ============ -->
+<section class="view" id="map">
+  <h2>Map <span class="sub">untouched things first — what has not been looked at is the useful half</span></h2>
+  <div class="panel">
+    <div class="hd"><span>Endpoints</span><span>41 found · 12 hammered · 29 to go</span></div>
+    <table>
+      <tr><th>Method</th><th>Path</th><th class="num">Calls</th><th>Statuses</th><th style="width:110px">Hammered</th><th>Read-back</th></tr>
+      <tr><td class="m POST">POST</td><td>/api/quotations/:id/convert</td><td class="num never">0</td><td><span class="tag">never called</span></td><td><div class="bar none"><i style="width:0"></i></div></td><td class="num">—</td></tr>
+      <tr><td class="m DELETE">DELETE</td><td>/api/deliveries/:id</td><td class="num">2</td><td>204</td><td><div class="bar none"><i style="width:0"></i></div></td><td class="num">—</td></tr>
+      <tr><td class="m PUT">PUT</td><td>/api/sales-docs/:id</td><td class="num">31</td><td>200 · 400</td><td><div class="bar none"><i style="width:0"></i></div></td><td>GET /api/sales-docs/:id</td></tr>
+      <tr><td class="m POST">POST</td><td>/api/invoices/:id/payments</td><td class="num">1,204</td><td>201 · 400</td><td><div class="bar"><i style="width:100%"></i></div></td><td>GET /api/invoices/:id</td></tr>
+      <tr><td class="m POST">POST</td><td>/api/deliveries</td><td class="num">402</td><td>201 · 409</td><td><div class="bar"><i style="width:74%"></i></div></td><td>GET /api/deliveries/day/:d</td></tr>
+      <tr><td class="m">GET</td><td>/api/orders</td><td class="num">881</td><td>200</td><td><div class="bar"><i style="width:100%"></i></div></td><td class="num">—</td></tr>
+      <tr><td class="m PATCH">PATCH</td><td>/api/customers/:id</td><td class="num">96</td><td>200</td><td><div class="bar"><i style="width:40%"></i></div></td><td>GET /api/customers/:id</td></tr>
+    </table>
+  </div>
+
+  <div class="grid2" style="margin-top:16px">
+    <div class="panel">
+      <div class="hd"><span>Pages</span><span>38 · 6 not fully explored</span></div>
+      <table>
+        <tr><th>Pattern</th><th class="num">Visits</th><th>State</th></tr>
+        <tr><td>/reports</td><td class="num">4</td><td class="never">stuck — 400 on every submit</td></tr>
+        <tr><td>/settings/billing</td><td class="num never">0</td><td class="never">never reached</td></tr>
+        <tr><td>/quotations/:id</td><td class="num">2</td><td class="never">partly explored</td></tr>
+        <tr><td>/invoices</td><td class="num">211</td><td>explored</td></tr>
+        <tr><td>/invoices/:id</td><td class="num">508</td><td>explored</td></tr>
+        <tr><td>/customers</td><td class="num">140</td><td>explored</td></tr>
+      </table>
+    </div>
+    <div class="panel">
+      <div class="hd"><span>Forms and fields</span><span>88 of 140 fields poked</span></div>
+      <table>
+        <tr><th>Form</th><th>Field</th><th>Type</th><th style="width:96px">Values tried</th></tr>
+        <tr><td>new-invoice</td><td>due_date</td><td>date</td><td><div class="bar none"><i style="width:0"></i></div></td></tr>
+        <tr><td>new-invoice</td><td>discount</td><td>number</td><td><div class="bar"><i style="width:20%"></i></div></td></tr>
+        <tr><td>new-order</td><td>quantity</td><td>number</td><td><div class="bar"><i style="width:100%"></i></div></td></tr>
+        <tr><td>new-order</td><td>notes</td><td>text</td><td><div class="bar"><i style="width:60%"></i></div></td></tr>
+        <tr><td>customer</td><td>phone</td><td>text</td><td><div class="bar"><i style="width:80%"></i></div></td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ACCOUNTS ============ -->
+<section class="view" id="accounts">
+  <h2>Accounts <span class="sub">all created by Shoal — nobody handed it a credential</span></h2>
+  <div class="pinned" style="background:#101a1a;border-color:#1c5b57">
+    <div class="h" style="color:var(--accent)">Tenancy — isolated</div>
+    <div class="note" style="margin:0">Account #15 cannot read account #14's customers, invoices or deliveries. So a cross-account
+    read <b style="color:var(--tx)">is a bug in this app</b>, and the leak check is on. If these accounts had shared data,
+    the same signal would have meant the opposite and the check would be reporting a fact instead.</div>
+  </div>
+  <div class="panel">
+    <table>
+      <tr><th>#</th><th>Email</th><th>Role</th><th>Verified</th><th>Created</th><th>Used by</th><th>State</th></tr>
+      <tr><td>3</td><td>shoal+k7f2a@localhost</td><td>USER</td><td>yes</td><td>17:48</td><td>scout-1</td><td>ok</td></tr>
+      <tr><td>14</td><td>shoal+p1x9c@localhost</td><td>USER</td><td>yes</td><td>21:02</td><td>crew-1 · xacct-1</td><td>ok</td></tr>
+      <tr><td>15</td><td>shoal+m4t0e@localhost</td><td>USER</td><td>yes</td><td>21:03</td><td>crew-2 · xacct-1</td><td>ok</td></tr>
+      <tr><td>16</td><td>shoal+z8q3b@localhost</td><td>ADMIN</td><td>yes</td><td>21:40</td><td>crew-3</td><td>ok</td></tr>
+      <tr><td>17</td><td>shoal+w2n6d@localhost</td><td>USER</td><td>no</td><td>23:31</td><td>—</td><td class="never">verification never arrived</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ============ LOG ============ -->
+<section class="view" id="log">
+  <h2>Log <span class="sub">everything that made this run less than it looks</span></h2>
+
+  <div class="pinned">
+    <div class="h">Starved — tried and always refused</div>
+    <div class="s"><span>POST /api/quotations/:id/convert</span><span>0 / 27</span><span>always 400 “nothing in ACCEPTED”</span></div>
+    <div class="s"><span>POST /api/reports/run</span><span>0 / 9</span><span>always 400 “date range required”</span></div>
+    <p class="note">A swarm being refused is not a swarm finding nothing. Every delivery check reading green over an
+    action that never once succeeded is how a clean run lies to you.</p>
+  </div>
+
+  <div class="panel log">
+    <div class="l"><span class="t">23:41</span><span class="kind k-restart">restart</span><span>App went away and came back. Build a1c204 → a91f0c. 2 findings queued for re-check.</span></div>
+    <div class="l"><span class="t">22:58</span><span class="kind k-stuck">stuck</span><span>scout-1 abandoned /reports after 6 turns on the same screen.</span></div>
+    <div class="l"><span class="t">21:15</span><span class="kind k-limit">limit</span><span>Planner hit the 5-hour session limit. Explorers paused; hammerers and confirmers carried on. Resumed 21:44.</span></div>
+    <div class="l"><span class="t">21:03</span><span class="kind k-info">info</span><span>Tenancy probe: accounts are isolated. Leak check enabled as a bug detector.</span></div>
+    <div class="l"><span class="t">19:22</span><span class="kind k-info">info</span><span>Seasoning target reached — 312 orders across 4 months. Slow-endpoint checks now meaningful.</span></div>
+    <div class="l"><span class="t">17:48</span><span class="kind k-info">info</span><span>Signup found at /register. Verification link read from the mail catcher in 1.2s.</span></div>
+  </div>
+</section>
+
+</main>
+
+<script>
+const tabs=[...document.querySelectorAll('.nav button')];
+tabs.forEach(b=>b.onclick=()=>{
+  tabs.forEach(x=>x.setAttribute('aria-selected',x===b));
+  document.querySelectorAll('.view').forEach(v=>v.classList.toggle('on',v.id===b.dataset.v));
+  document.querySelector('.main').scrollTop=0;
+});
+</script>
+</body>
+</html>

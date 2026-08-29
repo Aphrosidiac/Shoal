@@ -1,0 +1,21 @@
+{
+  "url": "http://localhost:3000",
+
+  "explorers": 3,
+  "hammerers": 16,
+  "confirmers": 2,
+  "pace": 40,
+
+  "mailPort": 1025,
+  "ui": { "port": 7717 },
+
+  "driver": {
+    "provider": "openai-compatible",
+    "baseUrl": "http://localhost:11434/v1",
+    "model": "REPLACE-with-a-small-local-model"
+  },
+  "planner": {
+    "provider": "claude-code"
+  },
+  "plannerCallsPerHour": 20
+}
