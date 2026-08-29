@@ -114,6 +114,17 @@ built to protect against a confident LLM does nothing about a confident
 principle needs a second clause: **a check must prove the thing it claims, not
 a thing consistent with it.**
 
+**Not all wrong answers cost the same, and the design treats them as if they
+do.** The tenancy probe decides once whether an app isolates its accounts, and
+on a `shared` verdict the cross-account check is switched off for the rest of
+the run. One run decided `shared` from a thin early sample and lost a real
+tenant leak it had found every time before — silently, with nothing downstream
+saying a check had been disabled. A wrong `isolated` costs almost nothing:
+leaks get reported and each still has to reproduce. A wrong `shared` costs the
+strongest check in the tool. Anywhere a verdict gates a check, the cheap
+mistake and the expensive mistake need different amounts of evidence, and the
+design specifies neither.
+
 **URL patterning was specified for paths and forgotten for everything else.**
 Rule 3 collapsed `/about`, `/terms`, `/privacy`, `/pricing` and `/contact` into
 a single `/:id` and took most of the map with them. And a form was identified
