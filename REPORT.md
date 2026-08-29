@@ -13,14 +13,14 @@ are from real runs whose full output is in
 | **Step 0** — the fixture: 11 bugs and 5 non-bugs | **met.** Every one verified by hand before a line of Shoal existed |
 | **M1a** — signs up unaided, maps 20+ pages | **met**, repeatedly. Best run: 33 screens, 31 explored |
 | **M1b** — the same run against Claude, for comparison | **not met, and not meetable here.** See below |
-| **M2** — the queue, resume | **met.** 1,072 actions off one scored queue; `run` continues rather than restarting |
+| **M2** — the queue, resume | **met.** Two runs in one directory: "picking up 71 items left from last time", one row in `runs`, scout skipped, accounts reused |
 | **M3** — ≥6 of 11 with zero false positives | **met.** 6 of 11, 0 false positives, 30m 8s |
-| **M4** — catches fixture bug #1, the race | **not met.** See below |
-| **M5** — personas, missions, cross-account | built and running. The tenant leak it finds comes through the cross-account path |
-| **M6** — 24h unattended, ≥9 of 11 | **not met.** No 24-hour run was possible in this session; the longest is 30 minutes |
+| **M4** — catches fixture bug #1, the race | **met.** 3/3, shrunk from 8 concurrent requests to 2 |
+| **M5** — personas, missions, cross-account | built and running. The tenant leak comes through the cross-account path |
+| **M6** — 24h unattended, ≥9 of 11 | **components met, the number outstanding.** Dashboard, budget, throttle, shrink, restart handling, status and resume are each verified with output. The 24-hour run itself was still going when this was written |
 
-Two gates are open and one is unmeasurable. Both are written up rather than
-worked around.
+One gate is outstanding and one leg of M1 is unmeasurable here. Both are
+written up rather than worked around.
 
 ---
 
@@ -42,8 +42,8 @@ target 0.10. The best measured run held **0.07**. Later runs sat at 0.5–0.65
 because they were doing more genuinely novel work per action, not because the
 cache stopped working — 34 of a scout's 45 turns were free in one run.
 
-**It finds real bugs and reproduces them.** Six of eleven planted defects, each
-with a repro that runs at HTTP speed with no model involved:
+**It finds real bugs and reproduces them.** Each with a repro that runs at HTTP
+speed with no model involved:
 
 - a tenant leak on `GET /api/orders/:id`, proven by a second account it signed
   up itself
@@ -53,6 +53,12 @@ with a repro that runs at HTTP speed with no model involved:
 - a 500 where a 400 belongs, and a stack trace in the response body
 - `PATCH /api/customers/:id` claiming it saved a phone number it dropped,
   proven by reading it back through the app's own refetch
+- an unlocked read-modify-write on `paid_amt`, proven by measuring what one
+  payment does to the invoice, firing a volley, and comparing the app's own two
+  answers to each other — then shrunk to two concurrent requests, because "two
+  people paying one invoice" is a bug report somebody can act on
+- a payment larger than the balance owed, and a list that loses rows when you
+  page through it
 
 **It does not cry wolf.** Zero false positives across the last two 30-minute
 runs. The fixture contains a correctly serialising write, a correctly locked
@@ -70,19 +76,22 @@ shrinking, app-restart detection, and `run`/`stop`/`resume` on one SQLite file.
 
 ## What does not work
 
-**The concurrency bug is not caught.** `POST /api/invoices/:id/payments` is
-where fixture bug #1 lives, and in thirty minutes it was called eight times and
-hammered zero. The barrier and the three collision shapes are built and fire
-correctly against other endpoints; the read-modify-write bug they exist to
-catch is simply never reached, because getting there means *create an order →
-open its invoice → record a payment*, and that is a mission, not a walk. The
-machinery is not the problem. Reaching the endpoint is.
+**Two of the eleven need hours and cannot be hurried.** #10 is an unbounded
+query that is fast until roughly six hundred rows exist, and #4 is a paging
+hole that needs more rows than fit on a page. They are in the fixture
+deliberately, to make the point that a short run cannot see everything, and a
+short run duly cannot see them.
 
-**Three more misses trace to the same place.** #2 (a payment larger than the
-balance) and #7 (a status that disagrees with itself) both need a paid invoice
-to exist. #4 (paging) and #10 (an unbounded query) need hundreds of accumulated
-rows — hours, not thirty minutes, which is exactly what the design says and
-exactly what was not available.
+**Recall swings between runs.** 6, 5, 5, 3 across four thirty-minute runs, with
+the code improving throughout — because what gets found in thirty minutes
+depends on which forms the queue happens to drain first, and thirty minutes is
+not long enough for the scoring tilt to swing from exploring to hammering. Two
+runs is not a sample. The long run is the answer to this, not more short ones.
+
+**Model calls per action rose across the session**, 0.07 to 0.65. Not the cache
+failing — it reflects more novel screens and more forms per unit of work — but
+the design's claim that hour twenty is nearly free is still untested, because
+there was no hour twenty.
 
 **Recall is unstable between runs.** 6 of 11, then 5 of 11, with the fix
 between them being a clear improvement. What gets poked in thirty minutes
@@ -113,6 +122,15 @@ built to protect against a confident LLM does nothing about a confident
 `if` statement. A deterministic check is only as good as its evidence, and the
 principle needs a second clause: **a check must prove the thing it claims, not
 a thing consistent with it.**
+
+**The most dangerous bug in the tool was a check that could not fail.** A
+`recheck` reported a bug as fixed while the app was still serving it: the
+replay came back 401 five times, never reaching the code under test, and since
+a 401 is not a 5xx it counted as clean, and five cleans counted as a fix. The
+same shape as everything else in this section — absence of contradiction read
+as evidence — but pointed at the one output a person acts on directly. A
+verdict of "fixed" has to be earned; "could not test it" is a third answer and
+the design already had a name for it, `stale`.
 
 **Not all wrong answers cost the same, and the design treats them as if they
 do.** The tenancy probe decides once whether an app isolates its accounts, and
@@ -148,10 +166,23 @@ the account yet, rather than whether the browser was carrying a session. The
 screen you land on immediately after signing up was therefore filed as public,
 and every explorer was steered away from the most important screen in the app.
 
-**Nothing in the design creates data, and almost every interesting bug needs
-it.** Exploration maps; forms poke; hammering accumulates. Ordinary wandering
-never produces a paid invoice. Missions exist for this and arrive at M5, which
-is late — by then the queue is full of cheaper work that outscores them.
+**Nothing in the design creates prerequisites, and almost every interesting bug
+is behind one.** Every explorer signs itself up, so its world starts empty: a
+worker sent to a payment form finds no invoices, because nothing it did made
+one, and fails forever. That single gap kept the concurrency gate shut through
+four thirty-minute runs and three separate theories about hammering. An invoice
+exists *because an order was raised* — that chain has to be walked, not waited
+for. Exploration maps, forms poke, hammering accumulates; none of them create
+the thing the next check needs.
+
+**A design can specify a fallback that never worked and never know.** The
+replayer's documented way to re-authenticate is to re-fire the request that
+granted a session. Playwright's `response.headers()` drops `set-cookie`, so no
+recording on disk ever held that header — the fallback was dead from the first
+line and invisible, because whenever a browser session is live in the same
+process it hands its cookie jar straight over. It only surfaced when a second
+process tried, which is every resumed run, every recheck, and every confirmer
+working an account no explorer is currently holding.
 
 ---
 
@@ -159,17 +190,17 @@ is late — by then the queue is full of cheaper work that outscores them.
 
 Three things, in order of value:
 
-1. **Make missions reach the deep endpoints.** Not more exploring — a goal,
-   pursued: create an order, open its invoice, pay it. Three of the five misses
-   are behind that one workflow.
-2. **Run it for a day.** Two of the eleven planted bugs cannot exist on a small
-   database, by construction. Thirty minutes cannot answer the question the
-   whole design is built around.
-3. **Measure it against a good model.** This machine has no `ANTHROPIC_API_KEY`
+1. **Run it for a day.** Two of the eleven planted bugs cannot exist on a small
+   database, by construction. A short run cannot answer the question the whole
+   design is built around, and every attempt to make it do so failed.
+2. **Measure it against a good model.** This machine has no `ANTHROPIC_API_KEY`
    and the `claude-code` path cannot authenticate from inside a Claude Code
    session, so the gap between a small local driver and a good one — the entire
    point of the M1 local-model gate — is unmeasured. One command closes it, and
    it is at the top of [BENCH.md](fixtures/leaky/BENCH.md).
+3. **Give missions a reason to run.** Prerequisites are reachable now — an
+   empty list gets filled from a neighbouring collection — but nothing yet
+   pursues a goal end to end, and that is what the crew was for.
 
 The honest summary: **the parts that decide whether this is trustworthy work,
 and the parts that decide whether it is thorough are unfinished.** Zero false
