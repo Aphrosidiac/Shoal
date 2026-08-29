@@ -35,6 +35,11 @@ export class Session {
     await this.pool.release(this.context)
   }
 
+  /** The app under test, for helpers that only have a session. */
+  get ctxBase(): string {
+    return this.ctx.base
+  }
+
   use(account: Account | null): void {
     this.account = account
     this.recorder.accountId = account?.id ?? null

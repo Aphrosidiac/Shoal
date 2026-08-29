@@ -1,4 +1,5 @@
 import type { Session } from './session.js'
+import { valueFor } from '../map/values.js'
 
 /**
  * An address like /app/customers/3 belongs to whichever account first saw it.
@@ -20,8 +21,27 @@ export async function reach(s: Session, url: string): Promise<{ ok: boolean; not
   if (!list.ok) return { ok: false, note: `could not open ${parent} either` }
 
   const pattern = detailPattern(url)
-  const link = s.last!.controls.find((c) => c.role === 'link' && c.href && pattern.test(c.href))
-  if (!link) return { ok: false, note: `nothing on ${parent} leads to one of these, so this account has none yet` }
+  let link = s.last!.controls.find((c) => c.role === 'link' && c.href && pattern.test(c.href))
+
+  // An empty list has exactly one affordance, and it is the create button.
+  //
+  // Every explorer signs up its own account, so its world starts empty: a
+  // worker sent to fill in a payment form finds no invoices, because nothing
+  // it did made one. It would then fail forever, which is how the endpoint
+  // behind three of the eleven planted bugs ended a thirty-minute run having
+  // never been called at all. So do what a person would do — make one first.
+  if (!link) {
+    // Some collections have no create button because nothing creates them
+    // directly: an invoice exists because an order was raised. So if this list
+    // cannot be added to, go and add to one that can, then come back. That is
+    // the chain a person follows without thinking about it, and without it an
+    // account that starts empty can never reach a payment form at all.
+    const made = (await createOne(s, parent)) || (await createElsewhere(s, parent))
+    if (!made) return { ok: false, note: `${parent} is empty for this account and nothing I could do filled it` }
+    await s.goto(parent)
+    link = s.last!.controls.find((c) => c.role === 'link' && c.href && pattern.test(c.href))
+    if (!link) return { ok: false, note: `made one from ${parent} and it still does not list anything` }
+  }
 
   const clicked = await s.click(link.ref)
   if (!clicked.ok || looksMissing(s)) return { ok: false, note: `followed a row from ${parent} and it was not there` }
@@ -52,6 +72,78 @@ export function suffixOf(url: string): string | null {
     if (isId(parts[i]!)) return i === parts.length - 1 ? null : '/' + parts.slice(i + 1).join('/')
   }
   return null
+}
+
+const CREATE = /^(new|add|create|raise|start)\b|\b(new|add|create)$/i
+
+/**
+ * Fill in whatever the "New …" affordance on a list leads to, with plausible
+ * values, so the list stops being empty. Deliberately dumb: it uses the same
+ * value generator the form worker does and does not care what it made, only
+ * that the collection now has something in it.
+ */
+async function createOne(s: Session, listPath: string): Promise<boolean> {
+  const entry =
+    s.last!.controls.find((c) => (c.role === 'link' || c.role === 'button') && CREATE.test(c.name)) ??
+    s.last!.controls.find((c) => c.href && /\/(new|create|add)$/i.test(c.href))
+  if (!entry) return false
+
+  const opened = await s.click(entry.ref)
+  if (!opened.ok) return false
+
+  const form = s.last!.forms[0]
+  if (!form) return false
+  for (const f of form.fields) {
+    const c = s.last!.controls.find((x) => x.ref === f.ref)
+    if (!c || c.disabled) continue
+    if (c.role === 'combobox') {
+      const opt = c.options.find((o) => o && !/^(choose|select|--)/i.test(o))
+      if (opt) await s.select(c.ref, opt)
+      continue
+    }
+    if (c.role === 'checkbox') continue
+    await s.type(c.ref, valueFor(f.type, 'normal', f.name))
+  }
+  await s.look()
+  const submit = form.submitRef
+    ? s.last!.controls.find((c) => c.ref === form.submitRef)
+    : s.last!.controls.find((c) => c.role === 'button' && /save|create|submit|add|raise/i.test(c.name))
+  if (!submit) return false
+  const sent = await s.click(submit.ref)
+  void listPath
+  return sent.ok
+}
+
+/**
+ * Make something in a neighbouring collection and see whether it fills this
+ * one. Deliberately blind about which neighbour matters — it tries the ones
+ * the app's own navigation offers and stops at the first that works.
+ */
+async function createElsewhere(s: Session, emptyList: string): Promise<boolean> {
+  const origin = new URL(s.ctxBase).origin
+  const siblings = s
+    .last!.controls.filter((c) => c.role === 'link' && c.href)
+    .map((c) => {
+      try {
+        return new URL(c.href, origin).pathname
+      } catch {
+        return ''
+      }
+    })
+    .filter((p) => p && p !== emptyList && !/\/(login|register|signup|logout)\b/i.test(p) && p.split('/').length <= 3)
+  const tried = new Set<string>()
+
+  for (const path of siblings) {
+    if (tried.size >= 3) break
+    if (tried.has(path)) continue
+    tried.add(path)
+    const there = await s.goto(path)
+    if (!there.ok) continue
+    if (!(await createOne(s, path))) continue
+    const back = await s.goto(emptyList)
+    if (back.ok && s.last!.controls.some((c) => c.role === 'link' && c.href.startsWith(emptyList + '/'))) return true
+  }
+  return false
 }
 
 /** A 404 body, an error banner, or a screen with nothing on it. */

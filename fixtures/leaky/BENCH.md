@@ -173,3 +173,16 @@ The design says so on its own front page: ten minutes finds a few things, a day
 finds about everything. Two of the eleven planted bugs **cannot exist** on a
 small database. Trying to close a concurrency gate in thirty-minute slices was
 the mistake; the next entry is a long run.
+
+## 2026-08-29 11:28 — M6: 24 hours unattended
+
+```
+found            1 of 11
+missed           #1 (race.lostupdate), #2 (money.overpaid), #3 (leak.crossaccount), #4 (paging.walk), #5 (wrong.readback), #6 (fault.5xx), #7 (wrong.consistency), #9 (auth.role), #10 (slow), #11 (fault.stack)
+false positives  0
+wall clock       1m 18s
+model calls      13        (0.13 per action)
+spend            $0.00
+```
+
+pages 14, endpoints 31, accounts 4, requests 357, actions 102
