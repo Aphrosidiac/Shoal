@@ -7,6 +7,26 @@ import { live } from '../ui/live.js'
 
 const STATIC = /\.(?:css|js|mjs|map|png|jpe?g|gif|svg|webp|avif|ico|woff2?|ttf|eot|mp4|webm)(?:\?|$)/i
 
+/**
+ * `response.headers()` flattens, and in doing so it drops set-cookie — which
+ * is the one header that matters most here. Without it nothing on disk records
+ * how an account got in, so any process that does not already hold the live
+ * browser jar is answered 401 forever: a resumed run, `shoal recheck`, every
+ * confirmer after a restart. headersArray() keeps them, including duplicates.
+ */
+async function headersOf(res: Response): Promise<Record<string, string>> {
+  const out: Record<string, string> = {}
+  try {
+    for (const h of await res.headersArray()) {
+      const k = h.name.toLowerCase()
+      out[k] = k === 'set-cookie' && out[k] ? `${out[k]}\n${h.value}` : h.value
+    }
+    return out
+  } catch {
+    return res.headers()
+  }
+}
+
 const isData = (headers: Record<string, string>): boolean => {
   const ct = String(headers['content-type'] ?? '').toLowerCase()
   if (!ct) return false
@@ -150,11 +170,29 @@ const WRITE = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 export class Recorder {
   pageId: number | null = null
   accountId: number | null = null
+  /** Where this session's traffic starts, so signup can be claimed later. */
+  readonly from: number
   /** How read-back pairs are learned: watch what the frontend refetches. */
   private lastWrite: { endpointId: number; at: number } | null = null
   private starts = new WeakMap<Request, number>()
 
-  constructor(private ctx: Ctx, readonly worker: string) {}
+  constructor(private ctx: Ctx, readonly worker: string) {
+    this.from =
+      ((ctx.db.prepare('SELECT MAX(id) m FROM recordings').get() as { m: number | null }).m ?? 0) + 1
+  }
+
+  /**
+   * Signing up is recorded before the account exists — there is no id to file
+   * it under until the app has answered. So those rows land with a null
+   * account, including the one carrying the session cookie, and a second
+   * process looking for "how did this account get in" finds nothing and gets a
+   * 401 for the rest of its life. Claim them once we know who we are.
+   */
+  claim(accountId: number): void {
+    this.ctx.db
+      .prepare('UPDATE recordings SET account_id = ? WHERE account_id IS NULL AND worker = ? AND id >= ?')
+      .run(accountId, this.worker, this.from)
+  }
 
   attach(context: BrowserContext): void {
     context.on('request', (req) => this.starts.set(req, Date.now()))
@@ -206,7 +244,7 @@ export class Recorder {
       reqHeaders: req.headers(),
       reqBody: req.postData(),
       status: res.status(),
-      resHeaders: res.headers(),
+      resHeaders: await headersOf(res),
       resBody: body,
       startedAt: started,
       ms: Date.now() - started,

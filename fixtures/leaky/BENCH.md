@@ -291,3 +291,56 @@ But every round was spending a five-attempt verdict and a shrink on something
 already proven, and those are the confirmers that every other suspicion is
 queued behind. Later rounds now fire the volley and stop there, which keeps
 the data accumulating without re-litigating the finding.
+
+## 2026-08-29 — M6: restart handling, recheck, and the fix loop
+
+Three of M6's parts do not need a day either. Run on :4101 while the 24-hour
+job continued on :4100.
+
+```
+1. found              #1 GET /api/reports/summary returns internal detail in the response body (5/5)
+2. bug still present  #1 still reproduces, 5/5, against build b63ce6f4c427
+3. fixed the app      #1 no longer reproduces in 5 attempts. Marked fixed, and kept.
+4. regressed the app  #1 still reproduces, 5/5
+```
+
+The app was stopped and restarted three times during that and the fixture ends
+byte-identical to the committed one.
+
+Three defects came out of it, and the middle one is the worst thing this tool
+could possibly do.
+
+**`shoal recheck 1` did not run at all.** The CLI treated the first argument as
+a URL for every command, so it tried to point Shoal at a host called "1" and
+refused to start. Nobody had ever invoked it.
+
+**`recheck` reported a bug as fixed while the app was still serving it.** The
+replay came back 401 five times — refused at the door, never reaching the code
+under test — and because a 401 is not a 5xx it counted as "clean", and five
+cleans counted as a fix:
+
+```
+recheck got:         GET /api/reports/summary?from=NOTADATE -> 401  (x5)
+the app was serving: {"error":"Internal Server Error","stack":"RangeError: Inval...
+```
+
+A request that never arrived is not evidence of anything. Refusals are
+`inconclusive` now, and a recheck with no conclusive attempt marks the finding
+**stale**, not fixed — "could not be re-checked" is one of the three states the
+design already defines, and this is what it is for.
+
+**Playwright drops `set-cookie` from `response.headers()`.** So no recording on
+disk held the header that says how an account got in, and the recorded-login
+fallback could never have worked. It was invisible while a browser session was
+live in the same process, because that path hands its cookie jar straight to
+the replayer — and broken for everything else: a resumed run, a recheck, every
+confirmer working an account no explorer currently holds.
+
+```
+before:  cold replay of /api/me as <account> -> 401
+after:   cold replay of /api/me as <account> -> 200
+```
+
+`headersArray()` keeps them. Signup traffic is also claimed for the account
+once it exists, since the request that grants the session is necessarily
+recorded before there is an account to file it under.

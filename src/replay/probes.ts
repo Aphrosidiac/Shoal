@@ -51,6 +51,17 @@ export async function faultAttempt(
 ): Promise<Attempt> {
   const res = await rp.replay(rec)
   if (res.status === 0) return { verdict: 'inconclusive', steps: [], recordingIds: [], why: 'the app did not answer' }
+  // Refused at the door. We never reached the code under test, so we learned
+  // nothing — and "nothing" must not be allowed to read as "clean". This is
+  // how a recheck told me a bug was fixed while the app was still serving it.
+  if (res.status === 401 || res.status === 403) {
+    return {
+      verdict: 'inconclusive',
+      steps: [],
+      recordingIds: res.recordingId ? [res.recordingId] : [],
+      why: `replayed as ${res.status}, so the request never got as far as the thing being tested`,
+    }
+  }
   const ids = res.recordingId ? [res.recordingId] : []
   const s = [step(rec, res.status)]
 

@@ -64,9 +64,14 @@ function parse(argv: string[]): { cmd: string; args: string[]; flags: Flags } {
 
 const bool = (v: string): string | boolean => (v === 'true' ? true : v === 'false' ? false : v)
 
-function toConfigFlags(f: Flags, args: string[]): Record<string, unknown> {
+/**
+ * `cmd` matters: only `run` and `doctor` take a URL as their first argument.
+ * Without it, `shoal recheck 1` tried to point the whole tool at a host called
+ * "1" and refused to start, which is a thing you only find out by running it.
+ */
+function toConfigFlags(f: Flags, args: string[], cmd = 'run'): Record<string, unknown> {
   const out: Record<string, unknown> = {}
-  if (args[0]) out.url = args[0]
+  if (args[0] && (cmd === 'run' || cmd === 'doctor')) out.url = args[0]
   for (const k of ['explorers', 'hammerers', 'confirmers', 'pace', 'mailPort', 'slowMs'] as const) {
     if (f[k] !== undefined) out[k] = Number(f[k])
   }
@@ -103,7 +108,7 @@ async function main(): Promise<number> {
       return 0
 
     case 'run': {
-      const cfg = loadConfig(toConfigFlags(flags, args), dir)
+      const cfg = loadConfig(toConfigFlags(flags, args, cmd), dir)
       const told = Boolean(args[0]) || Boolean(process.env.SHOAL_URL) || existsSync(join(dir, 'shoal.config.json'))
       if (!told && !existsSync(join(shoalDir(dir), 'run.db'))) {
         process.stderr.write('shoal run needs a URL the first time: shoal run http://localhost:3000\n')
@@ -115,13 +120,13 @@ async function main(): Promise<number> {
     }
 
     case 'doctor': {
-      const cfg = loadConfig(toConfigFlags(flags, args), dir)
+      const cfg = loadConfig(toConfigFlags(flags, args, cmd), dir)
       const { doctor } = await import('./doctor.js')
       return doctor(cfg)
     }
 
     case 'report': {
-      const cfg = loadConfig(toConfigFlags(flags, args), dir)
+      const cfg = loadConfig(toConfigFlags(flags, args, cmd), dir)
       const db = openReadOnly(dir)
       const appUrl = urlOf(db, cfg)
       const r = build(db, appUrl)
@@ -139,7 +144,7 @@ async function main(): Promise<number> {
     }
 
     case 'status': {
-      const cfg = loadConfig(toConfigFlags(flags, args), dir)
+      const cfg = loadConfig(toConfigFlags(flags, args, cmd), dir)
       const db = openReadOnly(dir)
       const r = build(db, urlOf(db, cfg))
       const c = r.coverage
@@ -166,7 +171,7 @@ async function main(): Promise<number> {
     }
 
     case 'map': {
-      const cfg = loadConfig(toConfigFlags(flags, args), dir)
+      const cfg = loadConfig(toConfigFlags(flags, args, cmd), dir)
       const db = openReadOnly(dir)
       void cfg
       const pages = map.pages(db)
@@ -197,7 +202,7 @@ async function main(): Promise<number> {
     }
 
     case 'findings': {
-      const cfg = loadConfig(toConfigFlags(flags, args), dir)
+      const cfg = loadConfig(toConfigFlags(flags, args, cmd), dir)
       const db = openReadOnly(dir)
       const r = build(db, urlOf(db, cfg))
       if (args[0]) {
@@ -219,7 +224,7 @@ async function main(): Promise<number> {
     }
 
     case 'recheck': {
-      const cfg = loadConfig(toConfigFlags(flags, args), dir)
+      const cfg = loadConfig(toConfigFlags(flags, args, cmd), dir)
       const { recheck } = await import('./recheck.js')
       return recheck(cfg, Number(args[0]), logger(true))
     }
@@ -250,7 +255,7 @@ async function main(): Promise<number> {
     }
 
     case 'ui': {
-      const cfg = loadConfig(toConfigFlags(flags, args), dir)
+      const cfg = loadConfig(toConfigFlags(flags, args, cmd), dir)
       const { serveOnly } = await import('./ui/server.js')
       return serveOnly(cfg)
     }

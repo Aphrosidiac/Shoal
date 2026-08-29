@@ -210,7 +210,10 @@ export function cookiesFrom(headers: Record<string, string>): string | null {
   const raw = headers['set-cookie']
   if (!raw) return null
   const pairs = raw
-    .split(/,(?=[^;]+?=)/)
+    // One per line when we recorded them ourselves; the comma split is the
+    // fallback for headers that arrived already flattened, and it has to avoid
+    // the commas inside an Expires date.
+    .split(/\n|,(?=[^;]+?=)/)
     .map((c) => c.split(';')[0]!.trim())
     .filter((c) => c.includes('=') && !/=;?$/.test(c))
   return pairs.length ? pairs.join('; ') : null

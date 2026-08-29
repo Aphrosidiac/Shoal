@@ -43,6 +43,7 @@ export class Session {
   use(account: Account | null): void {
     this.account = account
     this.recorder.accountId = account?.id ?? null
+    if (account) this.recorder.claim(account.id)
   }
 
   /** Look. Also the only place the map learns a screen exists. */

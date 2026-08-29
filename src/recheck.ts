@@ -33,18 +33,31 @@ export async function recheck(cfg: Config, id: number, log: (k: string, m: strin
 
     const rp = new Replayer(ctx, 'recheck')
     let reproduced = 0
-    const attempts = 5
-    for (let i = 0; i < attempts; i++) {
+    let conclusive = 0
+    let why = ''
+    for (let i = 0; i < 5; i++) {
       const a = await faultAttempt(ctx, rp, rec, repro.check)
+      if (a.verdict === 'inconclusive') {
+        why = a.why ?? 'could not test it'
+        continue
+      }
+      conclusive++
       if (a.verdict === 'reproduced') reproduced++
     }
 
     if (reproduced) {
       findings.setState(ctx.db, id, 'open', ctx.app.versionId)
-      process.stdout.write(`#${id} still reproduces, ${reproduced}/${attempts}, against build ${ctx.app.fingerprint}\n`)
+      process.stdout.write(`#${id} still reproduces, ${reproduced}/${conclusive}, against build ${ctx.app.fingerprint}\n`)
+    } else if (!conclusive) {
+      // "Fixed" has to be earned. A run of requests that never reached the code
+      // is not evidence of anything, and calling it fixed is the worst thing
+      // this tool could tell you — it says a bug is gone while the app is
+      // still serving it.
+      findings.setState(ctx.db, id, 'stale', ctx.app.versionId)
+      process.stdout.write(`#${id} could not be re-checked: ${why}. Marked stale, not fixed.\n`)
     } else {
       findings.setState(ctx.db, id, 'fixed', ctx.app.versionId)
-      process.stdout.write(`#${id} no longer reproduces against build ${ctx.app.fingerprint}. Marked fixed, and kept.\n`)
+      process.stdout.write(`#${id} no longer reproduces in ${conclusive} attempts against build ${ctx.app.fingerprint}. Marked fixed, and kept.\n`)
     }
     sup.writeReport()
     if (process.env.SHOAL_RECHECK_REPORT) process.stdout.write(text(build(ctx.db, ctx.base)) + '\n')
