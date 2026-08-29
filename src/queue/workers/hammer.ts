@@ -94,7 +94,23 @@ export async function runHammer(ctx: Ctx, rp: Replayer, item: Item): Promise<str
     // of rows could never appear.
     const endpoint = map.endpointById(ctx.db, p.endpointId)
     if (unhammerable && !endpoint?.readback_id) {
-      ctx.log('hammer', `${label} has nothing to measure yet; leaving it for when the map knows more`)
+      // Fire it anyway. Hammering has two jobs and only one of them is finding
+      // races: it is also how the app grows the rows that other checks need to
+      // have anything to find. A collection POST has no id in its path, so
+      // there is no object to measure and no read-back learned yet — but eight
+      // concurrent creates still make eight things, and bug #10 does not exist
+      // until roughly six hundred of them do.
+      //
+      // Returning early here left POST /api/orders at 25 orders after
+      // twenty-two minutes while the payments endpoint took 41 rounds.
+      const seed = pickSeed(ctx, p.endpointId)
+      if (seed) {
+        const waveId = `wave-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        const shots = buildShots(ctx, seed, p.shape, WAVE)
+        live.hammer({ endpoint: label, shape: p.shape, workers: shots.length, at: Date.now() })
+        await volley(ctx, shots, waveId)
+        return `${p.shape}: nothing measurable here yet, fired anyway for the data`
+      }
       return `${p.shape}: nothing to measure yet`
     }
     if (unhammerable) {
