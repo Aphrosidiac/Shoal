@@ -77,6 +77,19 @@ export async function runHammer(ctx: Ctx, rp: Replayer, item: Item): Promise<str
     },
   })
   if (!f) {
+    // "Nothing to read the result back from" is usually "not yet". Read-backs
+    // are learned by watching the app refetch after a write, so early in a run
+    // every endpoint looks unmeasurable — and marking one permanently on that
+    // basis starves the run of the very endpoint that accumulates data. One
+    // run marked POST /api/orders after three rounds and then spent every
+    // hammerer it had on a single payments endpoint: 123 rounds and 2,564
+    // requests there, 29 orders in total, and the two bugs that need hundreds
+    // of rows could never appear.
+    const endpoint = map.endpointById(ctx.db, p.endpointId)
+    if (unhammerable && !endpoint?.readback_id) {
+      ctx.log('hammer', `${label} has nothing to measure yet; leaving it for when the map knows more`)
+      return `${p.shape}: nothing to measure yet`
+    }
     if (unhammerable) {
       // Some endpoints have nothing countable behind them at all. Queuing
       // round after round against those crowds out the ones that do, and
