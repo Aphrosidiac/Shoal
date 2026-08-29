@@ -37,33 +37,48 @@ export async function tenancyOf(ctx: Ctx, rp: Replayer): Promise<Tenancy> {
     )
     .all() as Recording[]
 
-  const tried: Array<{ readable: boolean }> = []
+  const tried: Array<{ endpoint: number; readable: boolean }> = []
+  const seenEndpoints = new Set<number>()
   for (const rec of samples) {
-    if (!rec.account_id) continue
+    if (!rec.account_id || !rec.endpoint_id) continue
+    if (seenEndpoints.has(rec.endpoint_id)) continue
     const other = usable.find((a) => a.id !== rec.account_id)
     if (!other) continue
     const owner = await rp.fire({ method: 'GET', url: rec.url, accountId: rec.account_id })
     if (owner.status !== 200) continue
     const ownId = idOf(firstObject(owner.json) ?? {})
     if (!ownId) continue
+    seenEndpoints.add(rec.endpoint_id)
     const theirs = await rp.fire({ method: 'GET', url: rec.url, accountId: other.id })
     const readable = theirs.status === 200 && idOf(firstObject(theirs.json) ?? {}) === ownId
-    tried.push({ readable })
+    tried.push({ endpoint: rec.endpoint_id, readable })
     if (tried.length >= 6) break
   }
 
-  if (tried.length < 2) return 'unknown'
-  const share = tried.filter((t) => t.readable).length / tried.length
-  const verdict: Tenancy = share >= 0.8 ? 'shared' : 'isolated'
-  setTenancy(ctx.db, ctx.runId, verdict)
-  ctx.log(
-    'tenancy',
-    verdict === 'shared'
-      ? `every account can read the same data (${tried.length} objects checked), so cross-account reads are not leaks here`
-      : `accounts are separated (${tried.filter((t) => t.readable).length} of ${tried.length} objects readable by a stranger)`
-  )
-  cached = verdict
-  return verdict
+  /**
+   * The asymmetry here is deliberate, because the two mistakes do not cost the
+   * same. A wrong "isolated" means leaks get reported and each one still has
+   * to reproduce before it reaches anybody. A wrong "shared" silently switches
+   * off the single most valuable check in the tool, and nothing downstream
+   * ever says so.
+   *
+   * So: one object properly refused to a stranger is decisive. An app that
+   * refuses anything is not one shared workspace. "Shared" needs everything
+   * readable, across enough different endpoints to mean it — an early run
+   * where the only two samples happen to be a global config list and the leaky
+   * endpoint itself is not evidence of anything, and reading it as such is
+   * what lost a real tenant leak.
+   */
+  const refused = tried.filter((t) => !t.readable).length
+  if (refused > 0) {
+    setTenancy(ctx.db, ctx.runId, 'isolated')
+    ctx.log('tenancy', `accounts are separated — ${refused} of ${tried.length} objects were refused to a stranger`)
+    return (cached = 'isolated')
+  }
+  if (tried.length < 3) return 'unknown' // not cached: ask again once the map has more in it
+  setTenancy(ctx.db, ctx.runId, 'shared')
+  ctx.log('tenancy', `every account can read the same data (${tried.length} endpoints checked), so cross-account reads are not leaks here`)
+  return (cached = 'shared')
 }
 
 export const resetTenancy = (): void => {

@@ -5,6 +5,9 @@ import { scoreOf } from '../queue/score.js'
 
 const DOORWAY = /\/(login|signin|sign-in|register|signup|sign-up|logout|sign-out)\b/i
 const seen = new Set<string>()
+/** How many separate invoices are worth opening before it is data entry. */
+const PER_PATTERN = 3
+const perPattern = new Map<string, number>()
 
 /**
  * A link the app is showing us and we have never followed is not something to
@@ -38,4 +41,7 @@ export function noteLinks(ctx: Ctx, snap: Snapshot): void {
   }
 }
 
-export const resetLinks = (): void => seen.clear()
+export const resetLinks = (): void => {
+  seen.clear()
+  perPattern.clear()
+}

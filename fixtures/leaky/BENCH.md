@@ -104,3 +104,43 @@ spend            $0.00
 ```
 
 pages 30, endpoints 50, accounts 4, requests 1640, actions 1072
+
+## 2026-08-29 10:51 — links queued by shape: let the tilt tip toward hammering
+
+```
+found            5 of 11
+missed           #1 (race.lostupdate), #2 (money.overpaid), #3 (leak.crossaccount), #5 (wrong.readback), #7 (wrong.consistency), #10 (slow)
+false positives  0
+wall clock       30m 7s
+model calls      716        (0.63 per action)
+spend            $0.00
+```
+
+pages 33, endpoints 51, accounts 4, requests 1623, actions 1129
+
+Read this one with its context. Queuing links by shape did what it was meant
+to: the explore queue stopped growing with the data, the tilt tipped, and the
+paging bug (#4) was caught for the first time — inside the first ninety
+seconds. But the run also **lost the tenant leak (#3)**, and not because it
+missed it: the tenancy probe concluded `shared` from a thin early sample and
+cached it, which switches the cross-account check off for the rest of the run.
+
+That is the more valuable result of the two. A wrong `isolated` costs nothing —
+leaks get reported and each still has to reproduce. A wrong `shared` silently
+disables the single most valuable check in the tool and nothing downstream ever
+says so. The verdict is now asymmetric: **one object properly refused to a
+stranger is decisive**, and `shared` needs everything readable across at least
+three distinct endpoints. Verified directly against the fixture rather than by
+another thirty-minute run:
+
+```
+object-shaped API reads available to sample: GET /api/invoices/:id/payments, GET /api/invoices/:id, GET /api/orders/:id
+tenancy   accounts are separated — 1 of 2 objects were refused to a stranger
+VERDICT: isolated   ✓ correct for this fixture
+```
+
+M4 did not fall out of this run. `POST /api/invoices/:id/payments` was still
+never hammered. The hammering machinery is not the problem — five of eight
+write endpoints were hammered, and the paging find proves the tilt now tips.
+Reaching a payment means create an order, open its invoice, pay it, and nothing
+in the tool pursues a goal like that yet.
