@@ -281,12 +281,25 @@ export async function pagingAttempt(ctx: Ctx, rp: Replayer, rec: Recording): Pro
   if (total <= limit) return { verdict: 'inconclusive', steps: [], recordingIds: [], why: 'the list fits on one page' }
   if (total > 2000) return { verdict: 'inconclusive', steps: [], recordingIds: [], why: 'too many rows to walk politely' }
 
-  const seen: string[] = []
-  const ids = [first.recordingId]
-  for (const r of rowsOf(first.json)) {
-    const id = idOf(r)
-    if (id) seen.push(id)
+  const firstIds = rowsOf(first.json).map((r) => idOf(r)).filter((x): x is string => x !== null)
+
+  // Does this endpoint page at all? Plenty accept the parameter and ignore it,
+  // returning everything every time — and a walk of those sees page one again
+  // and calls the repeats lost rows. Shoal is the one adding the parameter
+  // here, so it has to check that the app is listening before judging it.
+  const secondPage = await readPage(2)
+  const secondIds = rowsOf(secondPage.json).map((r) => idOf(r)).filter((x): x is string => x !== null)
+  if (secondIds.length && firstIds.length && secondIds.every((id, i) => id === firstIds[i])) {
+    return {
+      verdict: 'inconclusive',
+      steps: [],
+      recordingIds: [],
+      why: 'page 2 is the same rows as page 1, so this endpoint does not page at all and there is nothing to lose',
+    }
   }
+
+  const seen: string[] = [...firstIds]
+  const ids = [first.recordingId]
   const pages = Math.ceil(total / limit)
   for (let p = 2; p <= pages; p++) {
     const res = await readPage(p)
