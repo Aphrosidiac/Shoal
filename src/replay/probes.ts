@@ -24,7 +24,15 @@ const step = (r: Recording | { method: string; url: string }, status: number | s
   ...(note ? { note } : {}),
 })
 
-export function safeCt(raw: string | null): string {
+export const pathPatternOf = (ctx: Ctx, url: string): string => {
+  try {
+    return ctx.patterns.pattern(new URL(url).pathname)
+  } catch {
+    return url
+  }
+}
+
+function safeCt(raw: string | null): string {
   if (!raw) return ''
   try {
     return String((JSON.parse(raw) as Record<string, string>)['content-type'] ?? '')
@@ -142,6 +150,22 @@ export async function readbackAttempt(
 export function readBackUrl(ctx: Ctx, rec: Recording, createdId: string | null): string | null {
   // A PATCH or PUT on an object is read back from the very same address.
   if (rec.method === 'PATCH' || rec.method === 'PUT') return rec.url
+  // A create changes the collection, not some other object. The app's own
+  // read-back after a create is usually the new thing's own page — correct for
+  // "did my write take", useless for "how many are there now", because it
+  // re-reads one fixed row that a create never touches. That is what retired
+  // POST /api/orders as unmeasurable and left the run at 25 orders.
+  if (rec.method === 'POST' && !hasIdSegment(rec.url)) {
+    const collection = ctx.db
+      .prepare(
+        `SELECT r.url FROM recordings r JOIN endpoints e ON e.id = r.endpoint_id
+         WHERE e.method = 'GET' AND e.path_pattern = ? AND r.status = 200
+         ORDER BY r.id DESC LIMIT 1`
+      )
+      .get(pathPatternOf(ctx, rec.url)) as { url: string } | undefined
+    if (collection) return collection.url
+  }
+
   // Otherwise use the read the app's own front end fires after this write.
   const endpoint = rec.endpoint_id ? map.endpointById(ctx.db, rec.endpoint_id) : undefined
   if (endpoint?.readback_id) {
