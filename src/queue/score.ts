@@ -77,6 +77,13 @@ export function scoreOf(db: DB, kind: Kind, payload: Record<string, unknown>, cr
       novelty = e ? (e.hammered === 0 ? 1 : Math.max(0.05, 1 / (e.hammered * 3 + 1))) : 1
       // a write endpoint scores double a read one
       if (e?.writes) novelty *= 2
+      // Hammering a create is never repetition. Every wave leaves rows behind,
+      // and two of the eleven planted bugs cannot exist until hundreds of them
+      // do — an unbounded query is fast on an empty table, and a list cannot
+      // lose a row it does not have. Decay is the right instinct for "we have
+      // tested this" and the wrong one for "the app is still too small", and
+      // it stalled seasoning at 138 rows five separate times.
+      if (e && isCreateEndpoint(e.method, e.path_pattern)) novelty = Math.max(novelty, 0.25)
       break
     }
     case 'crossaccount':
@@ -90,6 +97,10 @@ export function scoreOf(db: DB, kind: Kind, payload: Record<string, unknown>, cr
   const lean = kind === 'hammer' || kind === 'crossaccount' ? 1 - u : kind === 'confirm' ? 1 : u
   return BASE[kind] * novelty * staleness(createdAt) * Math.max(0.05, lean)
 }
+
+/** A POST to a collection: it makes rows rather than changing one. */
+export const isCreateEndpoint = (method: string, pathPattern: string): boolean =>
+  method === 'POST' && !pathPattern.includes(':id')
 
 export const VALUE_CLASSES = 8
 
