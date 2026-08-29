@@ -344,3 +344,51 @@ after:   cold replay of /api/me as <account> -> 200
 `headersArray()` keeps them. Signup traffic is also claimed for the account
 once it exists, since the request that grants the session is necessarily
 recorded before there is an account to file it under.
+
+## 2026-08-29 11:51 — M6: 24 hours unattended
+
+```
+found            0 of 11
+missed           #1 (race.lostupdate), #2 (money.overpaid), #3 (leak.crossaccount), #4 (paging.walk), #5 (wrong.readback), #6 (fault.5xx), #7 (wrong.consistency), #8 (idempotency.double), #9 (auth.role), #10 (slow), #11 (fault.stack)
+false positives  0
+wall clock       9m 2s
+model calls      0        (0.00 per action)
+spend            $0.00
+```
+
+pages 0, endpoints 0, accounts 0, requests 0, actions 0
+
+## 2026-08-29 — M2 resume and the budget ceiling
+
+Two more things asserted earlier in this file and never actually run. Both on
+:4101, alongside the 24-hour job.
+
+**Resume.** M2's gate is "kill it, restart it, and it picks up rather than
+starting over". Two consecutive two-minute runs in one directory:
+
+```
+run 1   11 pages, 20 endpoints,  51 requests   frontier 71   done 0
+run 2   "picking up 71 items left from last time"
+        17 pages, 32 endpoints, 965 requests   frontier 176  done 113
+        runs rows: 1
+```
+
+One row in `runs`, so it continued rather than starting a second one. It
+skipped the scout entirely — the map already existed — went straight to the
+queue, and reused the same three accounts instead of signing up again.
+
+**The budget ceiling.** A zero ceiling for seventy seconds:
+
+```
+budget   $0.00 spent in the last hour against a $0.00 ceiling — pausing the
+         work that costs money. Hammering and confirming carry on, and they
+         are free.
+
+model calls  0     the work that costs money stopped
+requests    12     the run did not
+```
+
+The twelve requests are the explorers logging in before they reach the budget
+gate. There were no hammer or confirm items ready at that moment — all 30 and
+19 of them were already done — so the free workers correctly had nothing to
+carry on with, rather than being blocked from it.
