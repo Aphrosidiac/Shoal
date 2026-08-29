@@ -9,6 +9,34 @@ fixed time, and scores what it confirmed against
 [EXPECT.json](EXPECT.json). A finding that matches no planted bug is a false
 positive, and a false positive fails the run whatever the recall was.
 
+## M1 — signs up unaided, and maps the app, on a local model
+
+The gate asks three things and they were never recorded on their own, only
+folded into full bench runs. Six minutes on :4101 with the local driver, while
+the 24-hour job held :4100:
+
+```
+signed up unaided      yes — 3 accounts, first ada.lamport.fd79be@shoal.test
+screens mapped         23        (gate: 20+)
+endpoints mapped       41
+requests recorded     763
+actions taken         214
+model calls            36        97% of them chose a tool rather than prose
+model calls / action  0.17
+```
+
+Driver `qwen3:1.7b` on Ollama, `reasoning_effort: none`. Mail verification did
+not run in this particular one — the catcher wants :1025 and the 24-hour job
+already had it, so the fixture's mail went nowhere. It is exercised in every
+other run in this file, which log `read a verification mail for …`.
+
+**The other leg of this gate is missing and cannot be taken here**: the same
+run against Claude, for comparison. The machine has no `ANTHROPIC_API_KEY`, and
+the `claude-code` path cannot authenticate from inside a Claude Code session —
+the nested CLI answers `OAuth session expired and could not be refreshed`. So
+the number that matters most about local models, *how much worse is it than a
+good model*, is not in this file. One command closes it; it is below.
+
 ## The machine these were taken on
 
 A MacBook with **8 GB of RAM**, which turns out to matter more than anything
