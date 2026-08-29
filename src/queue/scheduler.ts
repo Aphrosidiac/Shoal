@@ -91,13 +91,19 @@ export function seed(ctx: Ctx): number {
     // and two of the things worth finding — a list too big to page correctly,
     // a query that is only slow once there are rows — cannot exist until it
     // has. Novelty decays with every round, so this fades rather than stops.
-    // Round-robin rather than first-past-the-post. Without this the endpoint
-    // that happens to be measurable first takes every hammerer for the rest of
-    // the run, and hammering is also how the app grows the rows that other
-    // checks need.
+    // Spreading the hammerers across endpoints is novelty's job, not a
+    // barrier's. `scoreOf` already decays an endpoint's novelty as it is
+    // hammered — 1/(hammered*3+1), so one at round forty scores a fraction of
+    // a fresh one — and that cannot stall.
+    //
+    // A pace-setter can, and twice did. First `register`, a write endpoint the
+    // hammerer always declines, sat on round zero and held everything at round
+    // one. Then `POST /api/invoices/:id/payments` did the same, because it has
+    // no successful call to replay until a form worker reaches the pay form.
+    // Any rule of the form "nobody may get ahead of the slowest" hands a veto
+    // to whichever endpoint is stuck, and there is always one.
     const round = Math.floor(e.hammered / 3)
     if (round > 40) continue
-    if (round > leastHammeredRound(db) + 1) continue
     for (const shape of ['same-row', 'shared-resource', 'cross-action'] as const) {
       const id = queue.push(db, {
         kind: 'hammer',
@@ -146,18 +152,6 @@ export function seed(ctx: Ctx): number {
 
   coverage.set(db, 'frontier', queue.frontier(db))
   return added
-}
-
-/** The round the least-hammered live write endpoint is on. */
-function leastHammeredRound(db: Ctx['db']): number {
-  const rows = db
-    .prepare('SELECT id, method, path_pattern, hammered FROM endpoints WHERE writes = 1')
-    .all() as Array<{ id: number; method: string; path_pattern: string; hammered: number }>
-  const live = rows.filter(
-    (r) => !coverage.get(db, `nohammer:${r.id}`) && !isDoorEndpoint(`${r.method} ${r.path_pattern}`)
-  )
-  if (!live.length) return 0
-  return Math.min(...live.map((r) => Math.floor(r.hammered / 3)))
 }
 
 /** Has this form's endpoint ever answered a success to anybody? */

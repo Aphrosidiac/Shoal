@@ -450,3 +450,16 @@ have stayed unreachable for another twenty-three hours. The causes are in the
 commit above this one: a permanent "nothing to measure here" that should have
 meant "not yet", and hammer rounds that were first-past-the-post instead of
 round-robin.
+
+## 2026-08-29 12:32 — M6: 24 hours unattended
+
+```
+found            0 of 11
+missed           #1 (race.lostupdate), #2 (money.overpaid), #3 (leak.crossaccount), #4 (paging.walk), #5 (wrong.readback), #6 (fault.5xx), #7 (wrong.consistency), #8 (idempotency.double), #9 (auth.role), #10 (slow), #11 (fault.stack)
+false positives  0
+wall clock       21m 58s
+model calls      0        (0.00 per action)
+spend            $0.00
+```
+
+pages 0, endpoints 0, accounts 0, requests 0, actions 0
