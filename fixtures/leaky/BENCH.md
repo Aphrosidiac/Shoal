@@ -78,3 +78,16 @@ FALSE POSITIVES — each one of these fails the gate:
 ```
 
 pages 26, endpoints 44, accounts 4, requests 1065, actions 290
+
+## 2026-08-29 09:18 — after the six false-positive fixes
+
+```
+found            6 of 11
+missed           #1 (race.lostupdate), #2 (money.overpaid), #4 (paging.walk), #7 (wrong.consistency), #10 (slow)
+false positives  0
+wall clock       30m 8s
+model calls      662        (0.52 per action)
+spend            $0.00
+```
+
+pages 33, endpoints 51, accounts 4, requests 2822, actions 1273
