@@ -70,12 +70,18 @@ export async function runHammer(ctx: Ctx, rp: Replayer, item: Item): Promise<str
 
   // Now cut it down. The number in the report should be the smallest number of
   // people that can do this to you, not the number we happened to use.
-  width = await smallestWave(ctx, WAVE, async (n) => (await attempt(ctx, rp, rec, p.shape, n)).verdict === 'reproduced')
-  if (width < WAVE) {
-    const repro = JSON.parse(f.repro_json) as { steps: Array<Record<string, unknown>>; detail: string }
-    repro.detail = repro.detail.replace(new RegExp(`\\b${WAVE} were fired together`), `${width} were fired together`)
-    repro.detail += `\n\nShrunk: it still happens with ${width} concurrent requests, not just ${WAVE}.`
-    ctx.db.prepare('UPDATE findings SET repro_json = ? WHERE id = ?').run(JSON.stringify({ ...repro, shrunkFrom: WAVE }), f.id)
+  const small = await smallestWave(ctx, WAVE, (n) => attempt(ctx, rp, rec, p.shape, n))
+  width = small.width
+  if (small.attempt && width < WAVE) {
+    const detail =
+      `${small.attempt.detail ?? ''}\n\nShrunk from ${WAVE} concurrent requests to ${width}: it does not take a crowd.`
+    ctx.db
+      .prepare('UPDATE findings SET repro_json = ?, reach = ? WHERE id = ?')
+      .run(
+        JSON.stringify({ check: 'race.lostupdate', steps: small.attempt.steps, shrunkFrom: WAVE, detail }),
+        small.attempt.steps.length,
+        f.id
+      )
     ctx.log('shrink', `${label} still loses writes with ${width} at once, down from ${WAVE}`)
   }
   return `confirmed a lost update (${p.shape}, ${width} at once)`

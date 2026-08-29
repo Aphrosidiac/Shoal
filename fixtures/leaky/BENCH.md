@@ -186,3 +186,65 @@ spend            $0.00
 ```
 
 pages 14, endpoints 31, accounts 4, requests 357, actions 102
+
+## 2026-08-29 11:33 — M6: 24 hours unattended, with prerequisites reachable
+
+```
+found            0 of 11
+missed           #1 (race.lostupdate), #2 (money.overpaid), #3 (leak.crossaccount), #4 (paging.walk), #5 (wrong.readback), #6 (fault.5xx), #7 (wrong.consistency), #8 (idempotency.double), #9 (auth.role), #10 (slow), #11 (fault.stack)
+false positives  0
+wall clock       2m 25s
+model calls      0        (0.00 per action)
+spend            $0.00
+```
+
+pages 0, endpoints 0, accounts 0, requests 0, actions 0
+
+## 2026-08-29 — M4 gate: the concurrency bug, caught
+
+Not a `shoal bench` run. The M4 gate asks one question — does the hammerer
+catch fixture bug #1, the unlocked read-modify-write on `paid_amt` — and that
+is answerable directly, on its own fixture on :4101, without disturbing the
+24-hour run on :4100 or waiting for it.
+
+The script signs up a fresh account, lets `reach()` raise an order to make
+itself an invoice, records one ordinary payment through the browser, and then
+hands the recorded endpoint to `runHammer` for each of the three collision
+shapes:
+
+```
+reach     reached /pay on one of my own, from /app/invoices
+endpoint  POST /api/invoices/:id/payments {"201":1} readback: 7
+finding   RACE POST /api/invoices/:id/payments loses writes when they overlap  (3/3)
+shrink    POST /api/invoices/:id/payments still loses writes with 2 at once, down from 8
+
+same-row         confirmed a lost update (same-row, 2 at once)
+shared-resource  shared-resource: writes survived
+cross-action     cross-action: writes survived
+
+M4 GATE: PASS
+  One of these writes moves paid_amt by 10. 2 were fired together and 2 were
+  accepted with 201, so paid_amt should have reached 100. It reached 90: 1 of
+  the 2 accepted writes actually landed. The responses went out 1ms apart,
+  which is inside one read-modify-write window.
+```
+
+Three things in that worth keeping:
+
+**It calibrated against the app rather than assuming.** Nothing here knows what
+`paid_amt` means. It measured what one payment does to the invoice, fired a
+volley, and compared the app's own two answers to each other.
+
+**The other two shapes correctly found nothing.** `shared-resource` and
+`cross-action` both returned "writes survived", which is the right answer for
+this endpoint and the discipline that kept false positives at zero.
+
+**It shrank to two.** "Two people paying one invoice at the same time" is a bug
+report a developer can act on. "Eight machines hammering an endpoint" invites
+the answer that nobody would do that.
+
+The first version of the shrink reported it as *"2 were fired together and 8
+were accepted... 1 of the 8 accepted writes landed"* — it had rewritten the
+wave size in the old run's sentence and left the rest describing the run it
+threw away. A repro that contradicts itself is worse than a long one, so the
+shrunk wave now supplies its own account of what happened.

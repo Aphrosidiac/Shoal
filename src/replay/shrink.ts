@@ -54,20 +54,21 @@ export async function shrink(
 export async function smallestWave(
   ctx: Ctx,
   from: number,
-  fires: (n: number) => Promise<boolean>,
+  fires: (n: number) => Promise<Attempt>,
   opts: { attempts?: number; budgetMs?: number } = {}
-): Promise<number> {
+): Promise<{ width: number; attempt: Attempt | null }> {
   const attempts = opts.attempts ?? 2
   const deadline = Date.now() + (opts.budgetMs ?? 45_000)
-  let smallest = from
-  for (let n = 2; n < smallest; n *= 2) {
+  for (let n = 2; n < from; n *= 2) {
     if (ctx.stopping() || Date.now() > deadline) break
-    let hit = false
-    for (let i = 0; i < attempts && !hit; i++) hit = await fires(n)
-    if (hit) {
-      smallest = n
-      break
+    for (let i = 0; i < attempts; i++) {
+      const a = await fires(n)
+      // The smaller wave's own account of what happened, not the bigger one's
+      // with a number swapped in. Patching "8 were fired" to "2 were fired"
+      // leaves the rest of the sentence describing the run that was thrown
+      // away, and a repro that contradicts itself is worse than a long one.
+      if (a.verdict === 'reproduced') return { width: n, attempt: a }
     }
   }
-  return smallest
+  return { width: from, attempt: null }
 }
