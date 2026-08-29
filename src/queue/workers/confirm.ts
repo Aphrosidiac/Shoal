@@ -44,7 +44,10 @@ async function confirmSuspicion(ctx: Ctx, rp: Replayer, id: number): Promise<str
 
   let attempt: (n: number) => Promise<Attempt>
   let title = (note.title as string) ?? `${label} did not do what the screen said`
-  let detail = (note.detail as string) ?? `An agent expected ${s.expected} and saw ${s.observed}.`
+  // The fallback is templated too. Every branch below replaces this, but a
+  // default that quotes the model is a default that will reach the report the
+  // first time somebody adds a check and forgets to set one.
+  let detail = (note.detail as string) ?? `${label} did not behave as the recording says it should.`
   let shape = ''
 
   switch (check) {
@@ -76,10 +79,20 @@ async function confirmSuspicion(ctx: Ctx, rp: Replayer, id: number): Promise<str
     default: {
       // An agent's surprise. There is no deterministic shape to it, so the
       // only honest check is whether the request behind it still misbehaves.
+      //
+      // Note what is NOT here: the agent's own sentence. It is what made us
+      // look, and it is kept on the suspicion and shown under "not confirmed"
+      // where it is labelled as an agent's words — but a finding's title and
+      // description are assembled from the recording, always. A model-written
+      // summary drifts from what actually happened, and the one thing this
+      // report has to be is literally true.
       shape = 'agent'
       attempt = () => probes.faultAttempt(ctx, rp, rec, 'fault.5xx')
-      title = `${label} — ${s.expected}`
-      detail = `An agent expected ${s.expected} and saw ${s.observed}.`
+      title = `${label} answers ${rec.status} on a request an agent took exception to`
+      detail =
+        `An agent acted here and then said the screen disagreed with what it had just done. That is not evidence, so it ` +
+        `was thrown away and the request behind it was fired again on its own: ${rec.method} ${probes.pathOf(rec.url)} ` +
+        `still answers ${rec.status}.`
     }
   }
 
