@@ -5,7 +5,9 @@ import { join } from 'node:path'
 import type { Config } from '../config.js'
 import { openReadOnly, shoalDir, type DB } from '../store/db.js'
 import { CSS, HTML, JS } from './page.js'
-import { state } from './state.js'
+import { state, stepDetail } from './state.js'
+import * as stepsRepo from '../store/repo/steps.js'
+import { readFile } from 'node:fs/promises'
 
 export type UiHandle = { port: number; close: () => Promise<void> }
 
@@ -18,12 +20,44 @@ export type UiHandle = { port: number; close: () => Promise<void> }
  * Read-only, with three exceptions: start, stop and recheck a finding.
  */
 export async function serve(cfg: Config, get: () => Record<string, unknown>): Promise<UiHandle> {
-  const app = Fastify({ logger: false })
+  // forceCloseConnections: an open dashboard tab holds an SSE stream forever, and
+  // a close() that waits for it is a run that never exits after its report.
+  const app = Fastify({ logger: false, forceCloseConnections: true })
 
   app.get('/', async (_req, reply) => reply.type('text/html').send(HTML))
   app.get('/app.css', async (_req, reply) => reply.type('text/css').send(CSS))
   app.get('/app.js', async (_req, reply) => reply.type('application/javascript').send(JS))
   app.get('/api/state', async () => get())
+
+  // The filmstrip: one judged screen with everything Jev answered about it.
+  app.get<{ Params: { id: string } }>('/api/step/:id', async (req, reply) => {
+    const db = openReadOnly(cfg.dir)
+    try {
+      const r = stepsRepo.byId(db, Number(req.params.id))
+      if (!r) return reply.code(404).send({ error: 'no such step' })
+      return stepDetail(r)
+    } finally {
+      db.close()
+    }
+  })
+  app.get<{ Querystring: { before?: string; limit?: string } }>('/api/steps', async (req) => {
+    const db = openReadOnly(cfg.dir)
+    try {
+      const { stepSummary } = await import('./state.js')
+      return stepsRepo.recent(db, Math.min(200, Number(req.query.limit ?? 60)), req.query.before ? Number(req.query.before) : undefined).map(stepSummary)
+    } finally {
+      db.close()
+    }
+  })
+  app.get<{ Params: { file: string } }>('/shots/:file', async (req, reply) => {
+    if (!/^\d+\.jpg$/.test(req.params.file)) return reply.code(404).send('')
+    try {
+      const buf = await readFile(join(shoalDir(cfg.dir), 'shots', req.params.file))
+      return reply.type('image/jpeg').header('cache-control', 'max-age=3600').send(buf)
+    } catch {
+      return reply.code(404).send('')
+    }
+  })
 
   app.get('/events', async (req, reply) => {
     reply.raw.writeHead(200, {

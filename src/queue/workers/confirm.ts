@@ -146,7 +146,7 @@ async function confirmScreen(ctx: Ctx, id: number, note: Record<string, unknown>
     requireAll: true,
     screen: String(note.urlPattern ?? ''),
     fingerprint: String(note.fp ?? findingFp(String(note.urlPattern ?? '?'), check, '')),
-    attempt: () => rewalk(ctx, session, browser.vault, trail, { check, shape: shapeOf(note), goal: String(note.goal ?? '') }),
+    attempt: () => rewalk(ctx, session, browser.vault, trail, { check, shape: shapeOf(note), goal: String(note.goal ?? ''), suspicionId: id }),
   })
   if (!f && untestable) {
     // Could not walk it — no account, the app was down — is a third answer.

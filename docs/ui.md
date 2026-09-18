@@ -15,6 +15,13 @@ them:
 2. **What has it found?** — the reason you left it on
 3. **What has it not looked at yet?** — whether a clean run means anything
 
+And since the rebuild, a fourth that the other three depend on:
+
+4. **What did the judge see, and what did it say?** — every screen, with a
+   picture, the action that led there, the probability of every question in
+   the contract, and what code made of it. A verdict you cannot inspect is
+   a verdict you cannot trust.
+
 Everything else is secondary.
 
 ## How it is built
@@ -31,6 +38,32 @@ write to. If the stream drops, the page falls back to polling every few
 seconds and says so rather than quietly going stale.
 
 Read-only, with three exceptions: start, stop, and recheck a finding.
+
+## Steps and Suspicions
+
+**Steps** is a filmstrip, newest first. One card per judged screen: the
+screenshot the agent was looking at, who it was and in which account, the
+action that led there, the screen kind Jev assigned, the operation and target
+Jev chose next (in a mission) with its confidence, the four highest
+probabilities from the contract as bars, and the verdicts that fired as
+badges. The footer is the cost of that step in tokens and milliseconds. Click
+the picture for the full request: every question and its probability, the
+operation distribution, what was entered, the goal.
+
+The list is not redrawn under the reader. New steps slide in at the top only
+while the view is scrolled to the top; otherwise a pill counts them.
+
+**Suspicions** is the pipeline: open (being walked again), confirmed,
+unreproduced. Each carries what was expected and observed, the screen, and
+the trail — the steps a confirmer replays in a fresh account, as a user
+would see them.
+
+The **Judge** strip on Now: screens judged and per minute, how many fired,
+suspicions by state, rewalks, Jev's median latency and spend. Under it, the
+latest verdicts as thumbnails.
+
+Every step is a row in the `steps` table and a JPEG in `.shoal/shots/`; both
+are off with `--no-ui`.
 
 ## The five views
 

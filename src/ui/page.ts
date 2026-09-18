@@ -57,6 +57,7 @@ h2:first-child{margin-top:2px}
 
 .grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:16px;align-items:start}
 @media (max-width:1080px){.grid2{grid-template-columns:1fr}}
+@media (max-width:900px){.step{grid-template-columns:1fr}.step .thumb{border-right:0;border-bottom:1px solid var(--line)}.step .thumb img{max-height:120px}}
 
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:7px;overflow:hidden}
 .panel .hd{padding:8px 12px;border-bottom:1px solid var(--line);color:var(--dim);font-size:11px;letter-spacing:.12em;text-transform:uppercase;display:flex;justify-content:space-between}
@@ -151,6 +152,90 @@ td.num{text-align:right;color:var(--dim)}
 .note{color:var(--dimmer);font-size:11.5px;margin:8px 0 0;max-width:80ch;line-height:1.6}
 
 .empty{color:var(--dimmer);padding:14px 12px;font-size:12px}
+
+/* ---------- steps: what the judge saw ---------- */
+.steps{display:flex;flex-direction:column;gap:8px}
+.step{display:grid;grid-template-columns:212px minmax(0,1fr);gap:0;background:var(--panel);border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.step.hit{border-color:#4a2e18}
+.step .thumb{position:relative;background:#06080a;border-right:1px solid var(--line);cursor:zoom-in;min-height:118px}
+.step .thumb img{display:block;width:100%;height:100%;max-height:150px;object-fit:cover;object-position:top}
+.step .thumb .nopic{color:var(--dimmer);font-size:11px;padding:12px}
+.step .thumb .ph{position:absolute;left:6px;top:6px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;padding:1px 6px;border-radius:3px;background:rgba(11,13,15,.85);border:1px solid var(--line)}
+.ph-explore{color:var(--dim)}.ph-mission{color:var(--accent)}.ph-form{color:var(--money)}.ph-rewalk{color:var(--auth)}
+.step .body{padding:9px 12px;display:flex;flex-direction:column;gap:5px;min-width:0}
+.step .l1{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.step .who{color:#e8eef1}
+.step .who .acct{color:var(--dimmer);font-size:11px;margin-left:6px}
+.step .t{color:var(--dimmer);font-size:11px;white-space:nowrap}
+.step .where{color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.step .where .kind{font-size:10.5px;color:var(--dim);border:1px solid var(--line);padding:0 5px;border-radius:3px;margin-left:6px}
+.step .act{color:var(--dim);font-size:12px}
+.step .act b{color:var(--tx);font-weight:500}
+.step .dec{color:var(--dim);font-size:12px}
+.step .dec b{color:var(--accent);font-weight:500}
+.step .same{color:var(--dimmer);font-size:11px}
+.probs{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:2px}
+.pr{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--dim)}
+.pr .bar{width:64px}
+.pr .bar i{background:var(--dim)}
+.pr.hot .bar i{background:var(--loss)}
+.pr.hot{color:var(--tx)}
+.pr .pv{color:var(--dimmer);min-width:24px;text-align:right}
+.verdicts{display:flex;flex-wrap:wrap;gap:6px}
+.vd{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:3px;border:1px solid}
+.step .l3{display:flex;justify-content:space-between;color:var(--dimmer);font-size:11px;margin-top:auto}
+.morebtn{all:unset;cursor:pointer;color:var(--accent);font-size:12px;padding:10px 0;display:block}
+.newpill{all:unset;cursor:pointer;position:sticky;top:0;z-index:2;display:block;text-align:center;background:var(--panel2);border:1px solid var(--accent-dim);color:var(--accent);border-radius:20px;padding:4px 12px;font-size:11.5px;margin:0 auto 8px;width:max-content}
+
+/* judge strip on Now */
+.judge{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:7px;overflow:hidden;margin-top:16px}
+.latest{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;margin-top:8px}
+.lt{background:var(--panel);border:1px solid var(--line);border-radius:6px;overflow:hidden;cursor:zoom-in}
+.lt img{display:block;width:100%;height:96px;object-fit:cover;object-position:top;background:#06080a}
+.lt .cap{padding:6px 8px;font-size:11px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lt .cap b{color:var(--tx);font-weight:500;display:block;overflow:hidden;text-overflow:ellipsis}
+
+/* suspicions */
+.sus{border:1px solid var(--line);border-radius:7px;background:var(--panel);margin-bottom:6px;overflow:hidden}
+.sus>summary{padding:9px 12px;cursor:pointer;list-style:none;display:grid;grid-template-columns:96px 178px 1fr 70px 78px;gap:10px;align-items:center;font-size:12px}
+.sus>summary::-webkit-details-marker{display:none}
+.sus>summary:hover{background:var(--panel2)}
+.st-pill{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;padding:2px 7px;border-radius:20px;border:1px solid;text-align:center}
+.st-open{color:var(--warn);border-color:#4a3d1c}.st-confirmed{color:var(--ok);border-color:#1f4a2c}.st-unreproduced{color:var(--dimmer);border-color:var(--line)}.st-dismissed{color:var(--dimmer);border-color:var(--line)}
+.sus .chk{color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sus .ttl{color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sus .pp{text-align:right;color:var(--dim)}
+.sus .tm{text-align:right;color:var(--dimmer);font-size:11px}
+.sus .body{padding:4px 12px 12px;border-top:1px solid var(--line);font-size:12px;color:var(--dim)}
+.sus .body .kv{display:grid;grid-template-columns:90px 1fr;gap:4px 10px;margin:8px 0}
+.sus .body .kv span:nth-child(odd){color:var(--dimmer);text-transform:uppercase;letter-spacing:.08em;font-size:10.5px}
+.trail{background:#0d1013;border:1px solid var(--line);border-radius:5px;padding:8px 11px;margin-top:8px}
+.trail .tr{display:grid;grid-template-columns:20px 1fr 160px;gap:8px;padding:2px 0;color:var(--tx)}
+.trail .tr .n{color:var(--dimmer)}.trail .tr .u{color:var(--dimmer);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.filters{display:flex;gap:6px;margin:0 0 10px}
+.filters button{all:unset;cursor:pointer;font-size:11.5px;color:var(--dim);border:1px solid var(--line);padding:3px 9px;border-radius:20px}
+.filters button[aria-pressed=true]{color:#e8eef1;border-color:var(--accent-dim);background:#0f1f1e}
+
+/* modal */
+.modal{position:fixed;inset:0;background:rgba(6,8,10,.86);display:none;z-index:9;overflow:auto;padding:28px}
+.modal.on{display:block}
+.modal .box{max-width:1180px;margin:0 auto;background:var(--panel);border:1px solid var(--line);border-radius:8px;display:grid;grid-template-columns:minmax(0,1.3fr) minmax(320px,1fr);overflow:hidden}
+.modal .pic{background:#06080a;border-right:1px solid var(--line);display:flex;align-items:flex-start;justify-content:center}
+.modal .pic img{display:block;max-width:100%}
+.modal .info{padding:14px 16px;font-size:12px;overflow:auto;max-height:calc(100vh - 56px)}
+.modal .info h3{margin:0 0 4px;font-size:13px;color:#e8eef1;font-weight:600}
+.modal .info .sub2{color:var(--dimmer);margin-bottom:12px}
+.modal .q{display:grid;grid-template-columns:1fr 100px 34px;gap:8px;align-items:center;padding:3px 0;border-bottom:1px solid rgba(30,36,41,.5);color:var(--dim)}
+.modal .q.hot{color:var(--tx)}
+.modal .q .bar{width:100px}.modal .q.hot .bar i{background:var(--loss)}
+.modal .q .pv{text-align:right;color:var(--dimmer)}
+.modal .close{all:unset;cursor:pointer;color:var(--dim);float:right;font-size:18px;line-height:1;padding:0 2px}
+.modal .close:hover{color:#e8eef1}
+.ops{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.op{font-size:11px;padding:2px 7px;border-radius:3px;border:1px solid var(--line);color:var(--dim)}
+.op.pick{color:var(--accent);border-color:var(--accent-dim)}
+.kv2{display:grid;grid-template-columns:110px 1fr;gap:3px 10px;margin:10px 0;color:var(--dim)}
+.kv2 span:first-child{color:var(--dimmer);text-transform:uppercase;letter-spacing:.08em;font-size:10.5px}
 .stale{position:fixed;right:14px;bottom:12px;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:6px 10px;color:var(--warn);font-size:11.5px}
 .err{color:var(--bad)}
 `
@@ -169,6 +254,8 @@ export const HTML = String.raw`<!doctype html>
   </div>
   <div class="nav" role="tablist">
     <button role="tab" aria-selected="true"  data-v="now">Now</button>
+    <button role="tab" aria-selected="false" data-v="steps">Steps <span class="n" id="n-steps">0</span></button>
+    <button role="tab" aria-selected="false" data-v="suspicions">Suspicions <span class="n" id="n-sus">0</span></button>
     <button role="tab" aria-selected="false" data-v="findings">Findings <span class="n" id="n-find">0</span></button>
     <button role="tab" aria-selected="false" data-v="map">Map <span class="n" id="n-map">0</span></button>
     <button role="tab" aria-selected="false" data-v="accounts">Accounts <span class="n" id="n-acct">0</span></button>
@@ -178,12 +265,15 @@ export const HTML = String.raw`<!doctype html>
 </nav>
 <main class="main">
   <section class="view on" id="v-now"></section>
+  <section class="view" id="v-steps"></section>
+  <section class="view" id="v-suspicions"></section>
   <section class="view" id="v-findings"></section>
   <section class="view" id="v-map"></section>
   <section class="view" id="v-accounts"></section>
   <section class="view" id="v-log"></section>
 </main>
 <div class="stale" id="stale" hidden></div>
+<div class="modal" id="modal"></div>
 <script src="/app.js"></script>
 </body></html>`
 
@@ -198,6 +288,9 @@ const CAT = { leak: 'leak', 'data-loss': 'loss', money: 'money', race: 'race', a
 
 let view = 'now'
 let openFinding = null
+let susFilter = 'all'
+let openSus = null
+let lastState = null
 
 document.querySelectorAll('.nav button').forEach((b) => b.addEventListener('click', () => {
   view = b.dataset.v
@@ -206,6 +299,9 @@ document.querySelectorAll('.nav button').forEach((b) => b.addEventListener('clic
 }))
 
 function render(s) {
+  lastState = s
+  $('#n-steps').textContent = s.judge.steps
+  $('#n-sus').textContent = s.judge.suspicions.open + s.judge.suspicions.confirmed
   $('#n-find').textContent = s.counters.findings
   $('#n-map').textContent = s.counters.endpoints
   $('#n-acct').textContent = s.counters.accounts
@@ -217,11 +313,18 @@ function render(s) {
     row('spend', '$' + s.counters.spend.toFixed(2)) + row('build', esc(s.app.build))
 
   $('#v-now').innerHTML = now(s)
+  // The filmstrip is not redrawn under the reader's cursor. New steps are
+  // slid in at the top only while the view is at the top; otherwise a pill
+  // counts them until it is clicked.
+  if (view === 'steps' && $('#steps-list')) refreshSteps(s)
+  else $('#v-steps').innerHTML = stepsView(s)
+  $('#v-suspicions').innerHTML = suspicionsView(s)
   $('#v-findings').innerHTML = findings(s)
   $('#v-map').innerHTML = mapView(s)
   $('#v-accounts').innerHTML = accounts(s)
   $('#v-log').innerHTML = log(s)
   wireFindings()
+  wireSteps()
 }
 
 const row = (k, v) => '<div class="row"><span>' + k + '</span><b>' + v + '</b></div>'
@@ -242,9 +345,11 @@ function now(s) {
       counter('Spend', '$' + c.spend.toFixed(2)) +
     '</div>' +
     (s.starved.length ? starved(s) : '') +
+    judgeStrip(s) +
+    latest(s) +
     '<div class="grid2" style="margin-top:16px"><div>' +
-      panel('Explorers', s.workers.filter((w) => w.kind === 'explorer').length + ' active',
-        s.workers.filter((w) => w.kind === 'explorer').map(exCard).join('') || '<div class="empty">no explorer has started yet</div>') +
+      panel('Agents', s.workers.filter((w) => w.kind === 'explorer' || w.kind === 'crew').length + ' active',
+        s.workers.filter((w) => w.kind === 'explorer' || w.kind === 'crew').map(exCard).join('') || '<div class="empty">no agent has started yet</div>') +
       '<div style="height:16px"></div>' +
       panel('Hammerers', s.hammers.length ? 'last ' + s.hammers.length : 'idle',
         s.hammers.map((h) => '<div class="ham"><span class="ep">' + esc(h.endpoint) + '</span>' +
@@ -258,6 +363,30 @@ function now(s) {
           '<span class="s ' + (f.status >= 500 || f.status === 0 ? 'bad' : f.status >= 400 ? 'warn' : 'ok') + '">' + f.status + '</span>' +
           '<span class="ms">' + f.ms + 'ms</span><span class="w">' + esc(f.worker) + '</span></div>').join('') + '</div>') +
     '</div></div>'
+}
+
+function judgeStrip(s) {
+  const j = s.judge
+  const perMin = s.app.uptimeMs > 0 ? (j.steps / (s.app.uptimeMs / 60000)).toFixed(1) : '0'
+  return '<h2 style="margin-top:22px">Judge <span class="sub">one Jev request per step: the choice of the next action and the contract on the last</span></h2>' +
+    '<div class="judge" style="margin-top:0">' +
+      counter('Screens judged', j.steps, perMin + ' / min') +
+      counter('Fired', j.withVerdict, 'screens with a verdict') +
+      counter('Suspicions', j.suspicions.open, 'open') +
+      counter('Confirmed', j.suspicions.confirmed, j.suspicions.unreproduced + ' did not hold') +
+      counter('Rewalks', j.rewalks) +
+      counter('Jev latency', j.medianMs + '<small>ms</small>', 'median') +
+      counter('Jev spend', '$' + j.usd.toFixed(3), (j.tokens / 1000).toFixed(0) + 'k tokens') +
+    '</div>'
+}
+
+function latest(s) {
+  const hits = s.steps.filter((x) => x.verdicts.length).slice(0, 6)
+  if (!hits.length) return ''
+  return '<h2 style="margin-top:22px">Latest verdicts <span class="sub">suspicions, not findings — each one is walked again in a fresh account before it counts</span></h2>' +
+    '<div class="latest">' + hits.map((x) =>
+      '<div class="lt" data-step="' + x.id + '">' + (x.shot ? '<img src="/shots/' + x.shot + '" alt="">' : '<div style="height:96px"></div>') +
+      '<div class="cap"><b>' + esc(x.verdicts[0].check) + (x.verdicts[0].p < 1 ? ' ' + Math.round(x.verdicts[0].p * 100) + '%' : '') + '</b>' + esc(x.path) + '</div></div>').join('') + '</div>'
 }
 
 function exCard(w) {
@@ -307,6 +436,163 @@ function findings(s) {
 }
 
 const meta = (k, v) => '<div><div class="k">' + k + '</div><div class="v">' + esc(v) + '</div></div>'
+
+const VK = { fault: 'fault', wrong: 'wrong', 'data-loss': 'loss', auth: 'auth', leak: 'leak', money: 'money', race: 'race' }
+const vdBadge = (v) => '<span class="vd cat ' + (VK[v.kind] || 'wrong') + '">' + esc(v.check.replace('screen.', '')) + (v.p < 1 ? ' ' + Math.round(v.p * 100) + '%' : '') + '</span>'
+const pr = (k, p) => '<span class="pr' + (p >= 0.85 ? ' hot' : '') + '"><span>' + esc(k.replace('screen.', '')) + '</span>' +
+  '<span class="bar"><i style="width:' + Math.round(p * 100) + '%"></i></span><span class="pv">' + Math.round(p * 100) + '</span></span>'
+
+function stepsView(s) {
+  if (!s.steps.length) return '<h2>Steps</h2><div class="empty">Nothing judged yet. Every screen an agent lands on will appear here with what Jev answered about it.</div>'
+  return '<h2>Steps <span class="sub">every screen, newest first — the action that led there, what Jev was asked, what it answered, what code made of it</span></h2>' +
+    '<div class="steps" id="steps-list">' + s.steps.map(stepCard).join('') + '</div>' +
+    '<button class="morebtn" id="more-steps">earlier steps…</button>'
+}
+
+let pendingSteps = []
+function refreshSteps(s) {
+  const list = $('#steps-list')
+  const top = list.firstElementChild ? Number(list.firstElementChild.dataset.step) : 0
+  const fresh = s.steps.filter((x) => x.id > top && !pendingSteps.some((p) => p.id === x.id))
+  pendingSteps = fresh.concat(pendingSteps)
+  const main = document.querySelector('.main')
+  if (!pendingSteps.length) return
+  if (main.scrollTop < 60 && !$('#modal').classList.contains('on')) flushSteps()
+  else {
+    let pill = $('#newsteps')
+    if (!pill) {
+      pill = document.createElement('button')
+      pill.id = 'newsteps'
+      pill.className = 'newpill'
+      pill.addEventListener('click', () => { flushSteps(); main.scrollTo({ top: 0 }) })
+      list.parentElement.insertBefore(pill, list)
+    }
+    pill.textContent = pendingSteps.length + ' new step' + (pendingSteps.length === 1 ? '' : 's') + ' ↑'
+  }
+}
+function flushSteps() {
+  const list = $('#steps-list')
+  if (!list) return
+  const html = pendingSteps.sort((a, b) => b.id - a.id).map(stepCard).join('')
+  pendingSteps = []
+  list.insertAdjacentHTML('afterbegin', html)
+  const pill = $('#newsteps')
+  if (pill) pill.remove()
+  wireSteps()
+}
+
+function stepCard(x) {
+  const dec = x.decision
+  const decLine = dec
+    ? (dec.operation === 'DONE' || dec.operation === 'BLOCKED' || dec.operation === 'WAIT'
+        ? 'Jev: <b>' + esc(dec.operation) + '</b> ' + Math.round(dec.confidence * 100) + '%'
+        : 'Jev: <b>' + esc(dec.operation) + '</b> → ' + (dec.target ? esc(dec.target.role) + ' "' + esc(dec.target.name) + '"' : '?') +
+          (dec.option ? ' = ' + esc(dec.option) : '') + ' <span class="pv">' + Math.round((dec.targetConfidence == null ? dec.confidence : dec.targetConfidence) * 100) + '%</span>')
+    : x.phase === 'explore' ? 'code picked the next untried link' : x.phase === 'rewalk' ? 'walked again in a fresh account' + (x.rewalkOf ? ' for suspicion #' + x.rewalkOf : '') : ''
+  return '<div class="step' + (x.verdicts.length ? ' hit' : '') + '" data-step="' + x.id + '">' +
+    '<div class="thumb">' + (x.shot ? '<img loading="lazy" src="/shots/' + x.shot + '" alt="">' : '<div class="nopic">no picture</div>') +
+      '<span class="ph ph-' + esc(x.phase) + '">' + esc(x.phase) + '</span></div>' +
+    '<div class="body">' +
+      '<div class="l1"><span class="who">' + esc(x.worker) + (x.account ? '<span class="acct">' + esc(x.account) + '</span>' : '') + '</span><span class="t">' + clock(x.at) + '</span></div>' +
+      '<div class="where">' + esc(x.path) + (x.kind ? '<span class="kind">' + esc(x.kind) + '</span>' : '') + '</div>' +
+      '<div class="act">← <b>' + esc(x.action) + '</b>' + (x.changed ? '' : ' <span class="same">· screen unchanged</span>') + '</div>' +
+      (decLine ? '<div class="dec">' + decLine + '</div>' : '') +
+      '<div class="probs">' + x.top.map(([k, p]) => pr(k, p)).join('') + '</div>' +
+      (x.verdicts.length ? '<div class="verdicts">' + x.verdicts.map(vdBadge).join('') + '</div>' : '') +
+      '<div class="l3"><span>' + (x.goal ? esc(x.goal.slice(0, 90)) : '') + '</span><span>' + (x.cached ? 'cached' : (x.tokens / 1000).toFixed(1) + 'k tok · ' + x.ms + 'ms') + '</span></div>' +
+    '</div></div>'
+}
+
+function suspicionsView(s) {
+  const all = s.suspicions
+  const counts = { all: all.length, open: 0, confirmed: 0, unreproduced: 0 }
+  all.forEach((x) => { if (counts[x.state] != null) counts[x.state]++ })
+  const rows = all.filter((x) => susFilter === 'all' || x.state === susFilter)
+  return '<h2>Suspicions <span class="sub">what looked wrong. Open ones are being walked again; only what holds every time becomes a finding</span></h2>' +
+    '<div class="filters">' + ['all', 'open', 'confirmed', 'unreproduced'].map((f) =>
+      '<button data-sf="' + f + '" aria-pressed="' + (susFilter === f) + '">' + f + ' ' + counts[f] + '</button>').join('') + '</div>' +
+    (rows.length ? rows.map(susCard).join('') : '<div class="empty">nothing here</div>')
+}
+
+function susCard(x) {
+  return '<details class="sus" data-sus="' + x.id + '"' + (openSus === x.id ? ' open' : '') + '><summary>' +
+    '<span class="st-pill st-' + esc(x.state) + '">' + esc(x.state) + (x.retries ? ' ·' + x.retries : '') + '</span>' +
+    '<span class="chk">' + esc(x.check) + '</span>' +
+    '<span class="ttl">' + esc(x.title) + '</span>' +
+    '<span class="pp">' + (x.p == null ? esc(x.source) : x.p >= 1 ? 'code' : Math.round(x.p * 100) + '%') + '</span>' +
+    '<span class="tm">' + hhmm(x.at) + '</span></summary>' +
+    '<div class="body"><div class="kv">' +
+      '<span>expected</span><span>' + esc(x.expected) + '</span>' +
+      '<span>observed</span><span>' + esc(x.observed) + '</span>' +
+      '<span>screen</span><span>' + esc(x.screen || '—') + '</span>' +
+      '<span>by</span><span>' + esc(x.worker) + (x.recording ? ' · recording #' + x.recording : '') + '</span>' +
+    '</div>' +
+    (x.trail.length ? '<div class="trail">' + x.trail.map((t, i) =>
+      '<div class="tr"><span class="n">' + (i + 1) + '</span><span>' + esc(trailStep(t)) + '</span><span class="u">' + esc(t.url) + '</span></div>').join('') + '</div>' : '') +
+    '</div></details>'
+}
+
+function trailStep(t) {
+  if (t.op === 'goto') return 'open ' + t.path
+  if (t.op === 'click') return 'click ' + t.role + ' "' + t.name + '"'
+  if (t.op === 'type') return 'type "' + (t.text.length > 40 ? t.text.slice(0, 37) + '…' : t.text) + '" into "' + t.name + '"'
+  if (t.op === 'select') return 'choose "' + t.value + '" in "' + t.name + '"'
+  if (t.op === 'press') return 'press ' + t.key
+  return t.op
+}
+
+async function openStep(id) {
+  const m = $('#modal')
+  m.classList.add('on')
+  m.innerHTML = '<div class="box"><div class="pic"></div><div class="info">loading…</div></div>'
+  let x
+  try { x = await fetch('/api/step/' + id).then((r) => r.json()) } catch (e) { m.querySelector('.info').textContent = 'could not load'; return }
+  const nouls = Object.entries(x.answers).filter(([, v]) => typeof v === 'number').sort((a, b) => b[1] - a[1])
+  const d = x.decisionFull
+  m.innerHTML = '<div class="box"><div class="pic">' + (x.shot ? '<img src="/shots/' + x.shot + '" alt="">' : '<div class="empty">no picture</div>') + '</div>' +
+    '<div class="info"><button class="close" id="mclose">×</button>' +
+    '<h3>' + esc(x.path) + (x.kind ? ' <span class="tag">' + esc(x.kind) + '</span>' : '') + '</h3>' +
+    '<div class="sub2">' + esc(x.worker) + ' · ' + esc(x.phase) + ' · ' + clock(x.at) + (x.account ? ' · ' + esc(x.account) : '') + '</div>' +
+    '<div class="kv2"><span>action</span><span>' + esc(x.action) + (x.changed ? '' : ' (screen unchanged)') + '</span>' +
+    (x.goal ? '<span>goal</span><span>' + esc(x.goal) + '</span>' : '') +
+    (Object.keys(x.entered || {}).length ? '<span>entered</span><span>' + esc(Object.entries(x.entered).map(([k, v]) => k + ' = ' + v).join(' · ')) + '</span>' : '') +
+    '<span>cost</span><span>' + (x.cached ? 'cached' : x.tokens + ' tokens · ' + x.ms + ' ms · $' + (x.tokens * 0.042 / 1e6).toFixed(5)) + '</span></div>' +
+    (x.verdicts.length ? '<div class="verdicts" style="margin:6px 0 10px">' + x.verdicts.map(vdBadge).join('') + '</div>' : '') +
+    (d ? '<h3 style="margin-top:12px">Jev chose</h3><div class="ops">' + Object.entries(d.operations).sort((a, b) => b[1] - a[1]).map(([k, p]) =>
+        '<span class="op' + (k === d.operation ? ' pick' : '') + '">' + esc(k) + ' ' + Math.round(p * 100) + '%</span>').join('') + '</div>' +
+      (d.target ? '<div class="kv2"><span>target</span><span>' + esc(d.target.role) + ' "' + esc(d.target.name) + '"' + (d.option ? ' = ' + esc(d.option) : '') + ' · ' + Math.round((d.targetConfidence == null ? d.confidence : d.targetConfidence) * 100) + '% confident</span></div>' : '') : '') +
+    '<h3 style="margin-top:12px">The contract <span class="sub">' + nouls.length + ' questions, one request</span></h3>' +
+    nouls.map(([k, p]) => '<div class="q' + (p >= 0.85 ? ' hot' : '') + '"><span>' + esc(k) + '</span><span class="bar"><i style="width:' + Math.round(p * 100) + '%"></i></span><span class="pv">' + Math.round(p * 100) + '</span></div>').join('') +
+    '</div></div>'
+  $('#mclose').addEventListener('click', () => m.classList.remove('on'))
+}
+
+// Handlers are assigned, not added: this runs after every redraw, and a
+// listener added each time is a click that fires n times on the nth redraw.
+let loadingMore = false
+function wireSteps() {
+  document.querySelectorAll('[data-step]').forEach((el) => (el.onclick = (ev) => {
+    if (ev.target.closest('.thumb') || el.classList.contains('lt')) openStep(Number(el.dataset.step))
+  }))
+  document.querySelectorAll('[data-sf]').forEach((b) => (b.onclick = () => { susFilter = b.dataset.sf; if (lastState) $('#v-suspicions').innerHTML = suspicionsView(lastState); wireSteps() }))
+  document.querySelectorAll('details.sus').forEach((d) => (d.ontoggle = () => { openSus = d.open ? Number(d.dataset.sus) : null }))
+  const more = $('#more-steps')
+  if (more) more.onclick = async () => {
+    if (loadingMore) return
+    loadingMore = true
+    const list = $('#steps-list')
+    const last = list.lastElementChild
+    const before = last ? Number(last.dataset.step) : 0
+    more.textContent = 'loading…'
+    const rows = await fetch('/api/steps?before=' + before + '&limit=60').then((r) => r.json()).catch(() => [])
+    rows.forEach((x) => list.insertAdjacentHTML('beforeend', stepCard(x)))
+    more.textContent = rows.length ? 'earlier steps…' : 'that is all of them'
+    loadingMore = false
+    wireSteps()
+  }
+}
+$('#modal').addEventListener('click', (ev) => { if (ev.target === $('#modal')) $('#modal').classList.remove('on') })
+document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') $('#modal').classList.remove('on') })
 
 function unconf(s) {
   if (!s.unconfirmed.length) return ''

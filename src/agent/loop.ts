@@ -15,6 +15,7 @@ import { valueForKind } from './typist.js'
 import type { Persona } from './personas.js'
 import type { ValueClass } from '../map/values.js'
 import { live } from '../ui/live.js'
+import { logStep } from './steps.js'
 
 export type LoopOpts = {
   /** explore: code picks where to go and Jev judges every screen. mission: Jev drives toward a goal, and judges. */
@@ -250,6 +251,7 @@ export async function runLoop(ctx: Ctx, s: Session, opts: LoopOpts): Promise<Loo
       signedIn: Boolean(s.account) && Boolean(pending) && !isDoorway(pending!.before) && !isPublic(ctx, pending!.before),
     })
     out.suspicions += judged.filed.length
+    await logStep(ctx, s, { phase: opts.mode, step, after: snap, asked: answers, judged, changed })
     if (pending && pending.action.op !== 'type') entered = {}
     if (!opts.memory.noted(snap.fp)) {
       const kind = asChoice(answers.answers['screen.kind'])

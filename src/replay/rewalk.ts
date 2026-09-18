@@ -10,6 +10,7 @@ import { marker, pruned } from '../agent/screen.js'
 import * as recordings from '../store/repo/recordings.js'
 import type { Attempt } from './verdict.js'
 import type { StepState } from '../jev/bank.js'
+import { logStep } from '../agent/steps.js'
 
 /**
  * The second way a suspicion gets confirmed. HTTP replay proves what a
@@ -25,7 +26,7 @@ export async function rewalk(
   s: Session,
   vault: Vault,
   trail: Step[],
-  want: { check: string; shape: string; goal: string }
+  want: { check: string; shape: string; goal: string; suspicionId?: number }
 ): Promise<Attempt> {
   const previous = s.account
   const account = await vault.fresh(s)
@@ -126,11 +127,14 @@ export async function rewalk(
   const step: StepState = { goal: want.goal, action, before: pruned(before), after: pruned(after), entered, recent: recent.slice(-8) }
   const asked = await ask(ctx, s.worker, { drive: false, step, after })
   const requests = recordings.sinceFor(ctx.db, s.worker, watermark)
-  const { verdicts } = judge(ctx, s.worker, {
-    step, before, after, changed: marker(before) !== marker(after), answers: asked.answers, requests,
-    valueClasses: [], trail: s.trail,
+  const changed = marker(before) !== marker(after)
+  const judged = judge(ctx, s.worker, {
+    step, before, after, changed, answers: asked.answers, requests,
+    valueClasses: [], trail: s.trail, signedIn: true,
   }, { dry: true })
+  const { verdicts } = judged
   const hit: Verdict | undefined = verdicts.find((v) => v.check === want.check && (v.shape === want.shape || !want.shape))
+  await logStep(ctx, s, { phase: 'rewalk', step, after, asked, judged: { verdicts: hit ? [hit] : [], filed: [] }, changed, ...(want.suspicionId ? { rewalkOf: want.suspicionId } : {}) })
   const ids = requests.map((r) => r.id)
   if (hit) {
     return { verdict: 'reproduced', steps, recordingIds: ids, detail: `Walked again in ${account.email}: ${hit.observed}` }

@@ -120,7 +120,7 @@ export function nounOf(pattern: string): string | null {
   const parts = pattern.split('/').filter((x) => x && !x.startsWith(':') && !/^(app|admin|dashboard|new|edit|create)$/i.test(x))
   const last = parts[parts.length - 1]
   if (!last) return null
-  if (/^(login|signup|register|logout|help|profile|settings|notifications|reports?)$/i.test(last)) return null
+  if (/^(login|signup|register|logout|help|profile|settings|notifications|reports?|search|contact|about|pricing|terms|privacy)$/i.test(last)) return null
   return last.replace(/ies$/, 'y').replace(/s$/, '').replace(/[-_]/g, ' ')
 }
 

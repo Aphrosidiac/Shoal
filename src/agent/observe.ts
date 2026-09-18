@@ -6,6 +6,7 @@ import * as recordings from '../store/repo/recordings.js'
 import { ask } from './choose.js'
 import { judge, type Judged } from './judge.js'
 import { marker, pruned } from './screen.js'
+import { logStep } from './steps.js'
 
 /**
  * Judge one transition outside the driving loop: the form worker fills a
@@ -27,14 +28,18 @@ export async function observe(
     recent: [],
   }
   const asked = await ask(ctx, s.worker, { drive: false, step, after })
-  return judge(ctx, s.worker, {
+  const changed = marker(o.before) !== marker(after)
+  const judged = judge(ctx, s.worker, {
     step,
     before: o.before,
     after,
-    changed: marker(o.before) !== marker(after),
+    changed,
     answers: asked.answers,
     requests: recordings.sinceFor(ctx.db, s.worker, o.watermark),
     valueClasses: o.valueClasses,
     trail: s.trail,
+    signedIn: Boolean(s.account),
   })
+  await logStep(ctx, s, { phase: 'form', step, after, asked, judged, changed })
+  return judged
 }

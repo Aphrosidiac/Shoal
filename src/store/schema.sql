@@ -207,3 +207,32 @@ CREATE TABLE IF NOT EXISTS model_calls (
   prompt      TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_calls_at ON model_calls(at);
+
+-- ---------- what the judge saw ----------
+-- One row per judged screen: the action that led there, what Jev answered,
+-- what the judge made of it, and a screenshot on disk. The dashboard's
+-- filmstrip; nothing downstream reads it.
+CREATE TABLE IF NOT EXISTS steps (
+  id            INTEGER PRIMARY KEY,
+  at            INTEGER NOT NULL,
+  worker        TEXT NOT NULL,
+  phase         TEXT NOT NULL,
+  account       TEXT,
+  goal          TEXT,
+  path          TEXT NOT NULL,
+  url_pattern   TEXT NOT NULL,
+  kind          TEXT,
+  action_json   TEXT NOT NULL,
+  decision_json TEXT,
+  answers_json  TEXT NOT NULL,
+  verdicts_json TEXT NOT NULL,
+  entered_json  TEXT NOT NULL,
+  changed       INTEGER NOT NULL DEFAULT 1,
+  tokens        INTEGER NOT NULL DEFAULT 0,
+  ms            INTEGER NOT NULL DEFAULT 0,
+  cached        INTEGER NOT NULL DEFAULT 0,
+  shot          TEXT,
+  suspicion_ids TEXT NOT NULL DEFAULT '[]',
+  rewalk_of     INTEGER
+);
+CREATE INDEX IF NOT EXISTS ix_steps_at ON steps(at);
