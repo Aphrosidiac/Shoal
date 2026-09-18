@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import type { Config } from '../config.js'
 import { openReadOnly, shoalDir, type DB } from '../store/db.js'
 import { CSS, HTML, JS } from './page.js'
-import { state, stepDetail } from './state.js'
+import { state, stepDetail, emptyState } from './state.js'
 import * as stepsRepo from '../store/repo/steps.js'
 import { readFile } from 'node:fs/promises'
 
@@ -78,6 +78,55 @@ export async function serve(cfg: Config, get: () => Record<string, unknown>): Pr
     await new Promise<void>((resolve) => req.raw.on('close', () => resolve()))
   })
 
+  // The front door. `shoal ui` in a directory, paste a URL, press the green
+  // button: this spawns `shoal run` detached, writing to .shoal/run.log, with
+  // the dashboard it would have opened turned off because this one is it.
+  app.post<{ Body: { url?: string; forMs?: number; maxUsd?: number; explorers?: number } }>('/api/start', async (req, reply) => {
+    const b = req.body ?? {}
+    const url = String(b.url ?? cfg.url ?? '')
+    try {
+      const { assertLocal } = await import('../config.js')
+      assertLocal(url)
+    } catch (e) {
+      return reply.code(400).send({ error: (e as Error).message })
+    }
+    if (await isRunning(cfg)) return reply.code(409).send({ error: 'a run is already going in this directory' })
+    const { mkdirSync, openSync, unlinkSync } = await import('node:fs')
+    const dir = shoalDir(cfg.dir)
+    mkdirSync(dir, { recursive: true })
+    try {
+      unlinkSync(join(dir, 'stop'))
+    } catch {
+      /* no stale stop file */
+    }
+    const out = openSync(join(dir, 'run.log'), 'a')
+    const args = [...selfArgs(), 'run', url, '--no-ui']
+    if (b.forMs) args.push('--for', `${Math.round(Number(b.forMs) / 60000)}m`)
+    if (b.maxUsd !== undefined && b.maxUsd !== null) args.push('--jev-max-usd', String(b.maxUsd))
+    if (b.explorers) args.push('--explorers', String(b.explorers))
+    const child = spawn(process.execPath, args, { cwd: cfg.dir, detached: true, stdio: ['ignore', out, out], env: process.env })
+    child.unref()
+    return { message: `started a run against ${url}`, pid: child.pid }
+  })
+
+  app.get('/report', async (_req, reply) => {
+    try {
+      const html = await readFile(join(shoalDir(cfg.dir), 'report.html'), 'utf8')
+      return reply.type('text/html').send(html)
+    } catch {
+      return reply.code(404).type('text/plain').send('No report yet. One is written a minute into a run, and when it ends.')
+    }
+  })
+
+  app.get('/api/runlog', async () => {
+    try {
+      const text = await readFile(join(shoalDir(cfg.dir), 'run.log'), 'utf8')
+      return { lines: text.split('\n').slice(-80) }
+    } catch {
+      return { lines: [] }
+    }
+  })
+
   app.post('/api/stop', async () => {
     const { writeFileSync } = await import('node:fs')
     writeFileSync(join(shoalDir(cfg.dir), 'stop'), String(Date.now()))
@@ -113,22 +162,20 @@ export async function serve(cfg: Config, get: () => Record<string, unknown>): Pr
 
 /** `shoal ui` on its own: the same views, read out of the file on disk. */
 export async function serveOnly(cfg: Config): Promise<number> {
-  if (!existsSync(join(shoalDir(cfg.dir), 'run.db'))) {
-    process.stderr.write(`No run in ${cfg.dir}. Start one with: shoal run <url>\n`)
-    return 1
-  }
-  let db: DB = openReadOnly(cfg.dir)
-  const appUrl = (db.prepare('SELECT app_url FROM runs ORDER BY id DESC LIMIT 1').get() as { app_url: string }).app_url
-
   const h = await serve(cfg, () => {
-    // Reopen on each read: a run writing in another process moves the file on.
+    // Reopen on each read: a run writing in another process moves the file
+    // on, and before the first run there is no file at all — the dashboard
+    // is where one gets started.
+    if (!existsSync(join(shoalDir(cfg.dir), 'run.db'))) return emptyState(cfg)
+    let db: DB | null = null
     try {
-      db.close()
-    } catch {
-      /* already closed */
+      db = openReadOnly(cfg.dir)
+      const row = db.prepare('SELECT app_url FROM runs ORDER BY id DESC LIMIT 1').get() as { app_url: string } | undefined
+      if (!row) return emptyState(cfg)
+      return state(db, cfg, row.app_url, 'unknown')
+    } finally {
+      db?.close()
     }
-    db = openReadOnly(cfg.dir)
-    return state(db, cfg, appUrl, 'unknown')
   })
   process.stdout.write(`shoal ui  http://localhost:${h.port}\n`)
   await new Promise<void>((resolve) => {
@@ -137,6 +184,20 @@ export async function serveOnly(cfg: Config): Promise<number> {
   })
   await h.close()
   return 0
+}
+
+async function isRunning(cfg: Config): Promise<boolean> {
+  if (!existsSync(join(shoalDir(cfg.dir), 'run.db'))) return false
+  let db: DB | null = null
+  try {
+    db = openReadOnly(cfg.dir)
+    const row = db.prepare('SELECT last_seen_at, stopped_at FROM runs ORDER BY id DESC LIMIT 1').get() as { last_seen_at: number; stopped_at: number | null } | undefined
+    return Boolean(row && !row.stopped_at && Date.now() - row.last_seen_at < 30_000)
+  } catch {
+    return false
+  } finally {
+    db?.close()
+  }
 }
 
 /**

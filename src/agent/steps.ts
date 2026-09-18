@@ -13,7 +13,9 @@ import { shoalDir } from '../store/db.js'
 /**
  * What the dashboard shows: every judged screen, with a picture. Taking the
  * screenshot costs ~40 ms and the row a few kilobytes; a day is a few
- * thousand frames. It is off when the dashboard is.
+ * thousand frames. Always on: a run started from the dashboard runs with
+ * --no-ui (the dashboard that started it is the dashboard), and a run with
+ * no pictures is a run nobody can check.
  */
 export async function logStep(
   ctx: Ctx,
@@ -28,7 +30,6 @@ export async function logStep(
     rewalkOf?: number
   }
 ): Promise<number | null> {
-  if (!ctx.cfg.ui.enabled) return null
   let shot: Buffer | null = null
   try {
     shot = await s.page.screenshot({ type: 'jpeg', quality: 45, scale: 'css', timeout: 3000 })

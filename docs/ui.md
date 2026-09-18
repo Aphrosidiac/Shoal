@@ -6,6 +6,34 @@
 A mockup with realistic data is at [ui-mockup.html](ui-mockup.html). Open it in
 a browser; it is the reference the real thing gets built against.
 
+## The flow
+
+The dashboard is the front door. `shoal ui` in a directory — no run needed —
+and the Overview is a form: a URL, a duration, a Jev budget, one green
+button. That spawns `shoal run` detached (`--no-ui`, because this is the
+UI) and the header carries the run state on every page: *running · 9m left*
+and a Stop button, or *Report* and *Run again* once it ends.
+
+The rail is grouped by what a person came to do, the way ANK Ops' is:
+
+| | | |
+|---|---|---|
+| **Run** | Overview | KPI strip (findings, screens judged, coverage, spend) → *Do these first* and *Not looked at yet* → Agents and the Judge in the right column |
+| | Live | the filmstrip: every judged screen with its picture, the action that led there, what Jev chose next, the top probabilities, the verdicts; click for the whole contract |
+| **Results** | Findings | two-pane: the list with kind and reproduction, the detail with evidence pictures, the repro steps and a Recheck button |
+| | Suspicions | two-pane: what looked wrong, what happened when it was checked, the trail a confirmer replays |
+| **Coverage** | Map, Accounts | untouched first |
+| **System** | Log, Report | the run's own words, and `report.html` |
+
+## The language
+
+ANK Ops', carried value for value (`src/ui/css.ts`): one warm ground shared
+by rail, head and page; white cards with a hairline and a soft lift; the
+primary action is charcoal; the green is the active nav item and the one
+obvious next step on a page and carries ink, never white; status is a tinted
+chip with regular-weight text; table headers are sentence-case grey; Inter
+14/20. Hand-rolled, no build step.
+
 ## What it is for
 
 Three questions, and it exists to answer them in the order you actually ask

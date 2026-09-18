@@ -31,12 +31,25 @@ export function state(db: DB, cfg: Config, appUrl: string, build_: string): Reco
   // not whatever happens to be in the directory this window was opened from.
   const ran = runConfig(run?.config_json) ?? cfg
 
+  const running = Boolean(run) && Date.now() - (run?.last_seen_at ?? 0) < 30_000 && !run?.stopped_at
   return {
+    run: {
+      exists: Boolean(run),
+      running,
+      startedAt: run?.started_at ?? null,
+      stoppedAt: run?.stopped_at ?? null,
+      forMs: ran.forMs ?? null,
+      endsAt: run && ran.forMs ? run.started_at + ran.forMs : null,
+      url: appUrl,
+      dir: cfg.dir,
+      maxUsd: ran.jev?.maxUsd ?? null,
+      explorers: ran.explorers,
+    },
     app: {
       url: appUrl,
       uptimeMs: Date.now() - (run?.started_at ?? Date.now()),
       build: build_,
-      running: Date.now() - (run?.last_seen_at ?? 0) < 30_000,
+      running,
       driver: `typesafe / ${ran.jev?.model ?? 'jev-latest'}`,
       planner: ran.planner ? shortModel(ran.planner.provider, ran.planner.model) : 'code',
       config: { explorers: ran.explorers, hammerers: ran.hammerers, confirmers: ran.confirmers },
@@ -64,13 +77,18 @@ export function state(db: DB, cfg: Config, appUrl: string, build_: string): Reco
     starved: r.starved,
     events: r.events,
     findings: r.findings.map((f) => {
-      const repro = (r.repro[f.id] ?? {}) as { steps?: unknown[]; detail?: string }
+      const repro = (r.repro[f.id] ?? {}) as { steps?: unknown[]; detail?: string; check?: string; screen?: string }
+      const ep = f.endpoint_id ? map.endpointById(db, f.endpoint_id) : undefined
       return {
         id: f.id, kind: f.kind, title: f.title, reproduced: f.reproduced, attempts: f.attempts,
         reach: f.reach, state: f.state, occurrences: f.occurrences,
         firstSeen: f.first_seen_at, lastSeen: f.last_seen_at,
         detail: repro.detail ?? '', steps: repro.steps ?? [],
+        check: repro.check ?? f.kind,
+        where: repro.screen ?? (ep ? `${ep.method} ${ep.path_pattern}` : ''),
+        surface: repro.screen ? 'screen' : 'http',
         recordings: r.recordingIds[f.id] ?? [],
+        evidence: evidenceFor(db, f.fingerprint),
       }
     }),
     unconfirmed: r.unconfirmed,
@@ -100,6 +118,24 @@ export function state(db: DB, cfg: Config, appUrl: string, build_: string): Reco
     steps: steps.recent(db, 48).map(stepSummary),
     suspicions: suspicions.all(db).slice(0, 300).map(suspicionSummary),
   }
+}
+
+/**
+ * A screen finding's proof is a picture: the rewalk step that reproduced it
+ * in a fresh account, and the step that first saw it. Found through the
+ * suspicion that carries the finding's fingerprint.
+ */
+function evidenceFor(db: DB, fp: string): Array<{ stepId: number; shot: string | null; phase: string; at: number }> {
+  const sus = db.prepare("SELECT id FROM suspicions WHERE note LIKE ? ORDER BY id").all(`%"fp":"${fp}"%`) as Array<{ id: number }>
+  if (!sus.length) return []
+  const out: Array<{ stepId: number; shot: string | null; phase: string; at: number }> = []
+  for (const s of sus) {
+    const rows = db
+      .prepare("SELECT id, shot, phase, at FROM steps WHERE (rewalk_of = ? AND verdicts_json != '[]') OR suspicion_ids LIKE ? ORDER BY id DESC LIMIT 3")
+      .all(s.id, `%${s.id}%`) as Array<{ id: number; shot: string | null; phase: string; at: number }>
+    for (const r of rows) out.push({ stepId: r.id, shot: r.shot, phase: r.phase, at: r.at })
+  }
+  return out.slice(0, 4)
 }
 
 function judgeState(db: DB): Record<string, unknown> {
@@ -214,5 +250,18 @@ function pathOf(url: string): string {
     return u.pathname + (u.search || '')
   } catch {
     return url
+  }
+}
+
+/** Before any run exists in the directory: enough for the front door to draw itself. */
+export function emptyState(cfg: Config): Record<string, unknown> {
+  return {
+    run: { exists: false, running: false, startedAt: null, stoppedAt: null, forMs: null, endsAt: null, url: cfg.url, dir: cfg.dir, maxUsd: cfg.jev.maxUsd, explorers: cfg.explorers },
+    app: { url: cfg.url, uptimeMs: 0, build: '', running: false, driver: `typesafe / ${cfg.jev.model}`, planner: cfg.planner ? 'planner' : 'code', config: { explorers: cfg.explorers, hammerers: cfg.hammerers, confirmers: cfg.confirmers } },
+    counters: { pages: 0, pagesExplored: 0, endpoints: 0, endpointsHammered: 0, writeEndpoints: 0, fields: 0, fieldsPoked: 0, accounts: 0, recordings: 0, findings: 0, unconfirmed: 0, frontier: 0, perAction: 0, spend: 0 },
+    tenancy: null, workers: [], feed: [], hammers: [], starved: [], events: [], findings: [], unconfirmed: [],
+    map: { endpoints: [], pages: [], forms: [] }, accounts: [],
+    judge: { steps: 0, withVerdict: 0, rewalks: 0, medianMs: 0, calls: 0, tokens: 0, usd: 0, suspicions: { open: 0, confirmed: 0, unreproduced: 0 } },
+    steps: [], suspicions: [],
   }
 }

@@ -77,7 +77,7 @@ export async function runForm(ctx: Ctx, s: Session, p: FormPayload): Promise<str
   let judged = ''
   try {
     const j = await observe(ctx, s, {
-      goal: `submit the form on ${p.path} with ${target.name} set to a ${p.valueClass} value`,
+      goal: `submit the form on ${p.path.replace(/^https?:\/\/[^/]+/, '')} with ${target.name} set to a ${p.valueClass} value`,
       action: { op: 'click', target: { role: submit.role, name: submit.name }, url_before: before.path },
       before,
       entered,

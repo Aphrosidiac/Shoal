@@ -41,8 +41,8 @@ export const stats = (db: DB): { steps: number; judgedMs: number; tokens: number
   const r = db
     .prepare(
       `SELECT COUNT(*) steps, COALESCE(SUM(tokens),0) tokens,
-              SUM(CASE WHEN verdicts_json != '[]' THEN 1 ELSE 0 END) withVerdict,
-              SUM(CASE WHEN phase = 'rewalk' THEN 1 ELSE 0 END) rewalks
+              COALESCE(SUM(CASE WHEN verdicts_json != '[]' THEN 1 ELSE 0 END),0) withVerdict,
+              COALESCE(SUM(CASE WHEN phase = 'rewalk' THEN 1 ELSE 0 END),0) rewalks
        FROM steps`
     )
     .get() as { steps: number; tokens: number; withVerdict: number; rewalks: number }
