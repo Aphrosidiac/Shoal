@@ -86,15 +86,24 @@ const priv: Record<string, (c: Ctx) => string> = {
     page({
       title: 'Dashboard',
       body: `<p>Welcome back. Here is what is open.</p>
+<!-- UI BUG U7: a template that was never rendered reaches the screen -->
+<p class="summary">{{open_orders}} orders open this week.</p>
 <h2>Recent orders</h2><div data-list="/api/orders" data-cols="id,ref,qty,price" data-link="/app/orders/"></div>
 <h2>Recent invoices</h2><div data-list="/api/invoices" data-cols="id,ref,total,paid_amt,status" data-link="/app/invoices/"></div>
-<p><a href="/app/orders/new">Raise a new order</a> · <a href="/app/customers/new">Add a customer</a> · <a href="/app/search">Search</a> · <a href="/app/notifications">Notifications</a> · <a href="/app/help">Help</a></p>`,
+<!-- UI BUG U6: the link says invoices and goes to orders -->
+<p><a href="/app/orders/new">Raise a new order</a> · <a href="/app/customers/new">Add a customer</a> · <a href="/app/orders">View all invoices</a> · <a href="/app/search">Search</a> · <a href="/app/notifications">Notifications</a> · <a href="/app/help">Help</a></p>`,
     }),
   '/app/customers': () =>
     page({
       title: 'Customers',
       body: `<p><a href="/app/customers/new">Add a customer</a></p>
-<div data-list="/api/customers" data-cols="id,name,email,phone" data-link="/app/customers/"></div>`,
+<h2>Quick add</h2>
+<!-- UI BUG U3: saves, says Saved., and the list below is never refetched -->
+<form data-action="/api/customers" data-method="POST" data-norefresh="1">
+<label>Name<input name="name" type="text" required></label>
+<button type="submit">Quick add</button></form>
+<h2>All customers</h2>
+<div data-list="/api/customers" data-cols="id,name,email,phone" data-link="/app/customers/" data-empty="Nothing here yet. Add your first customer above."></div>`,
     }),
   '/app/customers/new': () =>
     page({
@@ -117,7 +126,8 @@ const priv: Record<string, (c: Ctx) => string> = {
   '/app/orders/new': () =>
     page({
       title: 'Raise an order',
-      body: `<form data-action="/api/orders" data-method="POST" data-idem="1" data-redirect="/app/orders/:id">
+      body: `<!-- UI BUG U5: a refused submit clears the whole form -->
+<form data-action="/api/orders" data-method="POST" data-idem="1" data-redirect="/app/orders/:id" data-reset-on-error="1">
 <label>Reference<input name="ref" type="text"></label>
 <label>Quantity<input name="qty" type="number" value="1"></label>
 <label>Unit price<input name="price" type="number" step="0.01" value="100"></label>
@@ -150,10 +160,11 @@ const priv: Record<string, (c: Ctx) => string> = {
 <label>To<input name="to" type="text" placeholder="2026-12-31"></label>
 <button type="submit">Run report</button></form>
 <div data-one="/api/reports/summary"></div>
-<p><a href="/app/reports/aging">Aging report</a></p>`,
+<p><a href="/app/reports/aging">Aging report</a> · <a href="/api/reports/export">Download CSV</a></p>`,
     }),
   '/app/reports/aging': () =>
-    page({ title: 'Aging report', body: `<div data-list="/api/invoices" data-cols="id,ref,total,paid_amt,status"></div><p><a href="/app/reports">Back to reports</a></p>` }),
+    // UI BUG U9: the request behind this list never answers, so the screen stays on "Loading…"
+    page({ title: 'Aging report', body: `<div data-list="/api/reports/aging" data-cols="id,ref,total,paid_amt,status"><p>Loading…</p></div><p><a href="/app/reports">Back to reports</a></p>` }),
   '/app/admin': () =>
     page({
       title: 'Admin',
@@ -164,10 +175,11 @@ const priv: Record<string, (c: Ctx) => string> = {
   '/app/settings': () =>
     page({
       title: 'Settings',
-      body: `<form data-action="/api/noop" data-method="POST">
+      body: `<!-- UI BUG U1: the save button is wired to nothing -->
+<form data-action="/api/noop" data-method="POST">
 <label>Business name<input name="business" type="text"></label>
 <label>Currency<select name="currency"><option>MYR</option><option>USD</option></select></label>
-<button type="submit">Save settings</button></form>`,
+<button type="button" id="save-settings">Save settings</button></form>`,
     }),
   '/app/profile': () => page({ title: 'Your profile', body: `<div data-one="/api/me"></div>` }),
   '/app/team': () =>
@@ -183,7 +195,9 @@ const priv: Record<string, (c: Ctx) => string> = {
 <div data-list="/api/customers" data-cols="id,name,email"></div>`,
     }),
   '/app/help': () => page({ title: 'Help', body: `<h2>Getting started</h2><ol><li>Add a customer</li><li>Raise an order</li><li>Take a payment against the invoice</li></ol><p><a href="/app">Back to the dashboard</a></p>` }),
-  '/app/notifications': () => page({ title: 'Notifications', body: `<p>Nothing needs your attention.</p><p><a href="/app">Back to the dashboard</a></p>` }),
+  '/app/notifications': () =>
+    // UI BUG U2: the screen says Done. whatever the server answered, and the server answers 404
+    page({ title: 'Notifications', body: `<p>Nothing needs your attention.</p><form data-action="/api/notifications/read" data-method="POST" data-optimistic="Done."><button type="submit">Mark all as read</button></form><p><a href="/app">Back to the dashboard</a></p>` }),
 }
 
 for (const [path, render] of Object.entries(pub)) {
@@ -236,9 +250,11 @@ app.get('/app/invoices/:id', async (req, reply) => {
     page({
       title: 'Invoice',
       heading: 'Invoice ' + id,
-      body: `<div data-one="/api/invoices/${id}"></div>
+      body: `<!-- UI BUG U4: the status line reads the stored status, the balance is derived; after "Set status PAID" they disagree on screen -->
+<p id="invoice-line" data-invoice="/api/invoices/${id}"></p>
+<div data-one="/api/invoices/${id}"></div>
 <h2>Payments</h2><div data-list="/api/invoices/${id}/payments" data-cols="id,amount,method,reference"></div>
-<p><a href="/app/invoices/${id}/pay">Take a payment</a> · <a href="/app/invoices">Back to invoices</a></p>
+<p id="pay-actions"><a href="/app/invoices/${id}/pay">Take a payment</a> · <a href="/app/invoices">Back to invoices</a></p>
 <h2>Set status</h2>
 <form data-action="/api/invoices/${id}/status" data-method="POST">
 <label>Status<select name="status"><option>UNPAID</option><option>PARTIAL</option><option>PAID</option><option>VOID</option></select></label>
@@ -256,13 +272,21 @@ app.get('/app/invoices/:id/pay', async (req, reply) => {
       heading: 'Take a payment on invoice ' + id,
       body: `<div data-one="/api/invoices/${id}"></div>
 <form data-action="/api/invoices/${id}/payments" data-method="POST">
-<label>Amount<input name="amount" type="number" step="0.01" required></label>
+<label>Amount<input name="amount" type="number" step="0.01" required><small>Enter the amount in RM, for example 100.00</small></label>
 <label>Method<select name="method"><option>card</option><option>bank</option><option>cash</option></select></label>
 <label>Reference<input name="reference" type="text"></label>
 <button type="submit">Record payment</button></form>
 <p><a href="/app/invoices/${id}">Back to the invoice</a></p>`,
     })
   )
+})
+
+// UI BUG U9: a request that never completes.
+app.get('/api/reports/aging', () => new Promise<never>(() => undefined))
+// UI BUG U10: "Download CSV" clears the session and sends the user to the login page.
+app.get('/api/reports/export', async (_req, reply) => {
+  reply.header('set-cookie', 'sid=; Path=/; Max-Age=0')
+  return reply.redirect('/login')
 })
 
 // A stub the marketing forms post at, so a submit does something ordinary.

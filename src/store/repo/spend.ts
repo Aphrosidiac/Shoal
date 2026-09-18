@@ -47,3 +47,14 @@ export function sinceMs(db: DB, ms: number): Spend {
 
 export const callsByTierSince = (db: DB, tier: string, ms: number): number =>
   (db.prepare('SELECT COUNT(*) c FROM model_calls WHERE tier = ? AND at >= ?').get(tier, now() - ms) as { c: number }).c
+
+export function byTier(db: DB, tier: string): Spend {
+  return db
+    .prepare(
+      `SELECT COUNT(*) calls, COALESCE(SUM(usd),0) usd, COALESCE(SUM(in_tokens),0) in_tokens,
+              COALESCE(SUM(cached_in),0) cached_in, COALESCE(SUM(out_tokens),0) out_tokens,
+              COALESCE(SUM(repaired),0) repaired
+       FROM model_calls WHERE tier = ?`
+    )
+    .get(tier) as Spend
+}

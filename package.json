@@ -1,7 +1,7 @@
 {
   "name": "shoal",
   "version": "0.0.0",
-  "description": "A swarm of agents that use your app until it breaks",
+  "description": "A swarm that uses your app in the browser and reads every screen for bugs",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -16,7 +16,8 @@
     "shoal": "tsx src/cli.ts",
     "fixture": "tsx fixtures/leaky/server.ts",
     "bench": "tsx src/cli.ts bench",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "judge": "tsx src/bench/judge.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.70.0",

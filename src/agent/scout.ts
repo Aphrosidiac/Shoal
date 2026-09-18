@@ -2,17 +2,15 @@ import type { Ctx } from '../ctx.js'
 import type { Session } from '../browser/session.js'
 import type { Vault } from '../signup/vault.js'
 import { runLoop, RunMemory, type LoopResult } from './loop.js'
-import { SCOUT } from './prompts/index.js'
 import * as map from '../store/repo/map.js'
 import * as coverage from '../store/repo/coverage.js'
 
 /**
- * One agent, slow and smart. Given nothing but a URL it finds the signup flow,
- * makes itself an account, wanders, and writes what it learned into the map.
- * Runs mostly early, and again whenever the app changes under us.
- *
- * It cares about breadth: new screens, new forms, new endpoints. It does not
- * chase goals — that is the crew's job.
+ * One agent, wide rather than deep. Given nothing but a URL it finds the
+ * signup flow, makes itself an account, and walks every untried link — in
+ * code, for free. Jev judges every screen it lands on and says what kind of
+ * screen it is; that is what fills the map. It does not chase goals — that
+ * is the crew's job.
  */
 export async function scout(
   ctx: Ctx,
@@ -26,21 +24,16 @@ export async function scout(
     const account = await vault.any(s)
     if (!account) {
       return {
-        turns: 0, modelCalls: 0, actions: 0, fastActions: 0,
+        turns: 0, modelCalls: 0, actions: 0, fastActions: 0, suspicions: 0,
         reason: 'error', result: 'could not get into the app at all', notes: [], account: null,
       }
     }
     coverage.set(ctx.db, 'accounts', accountsCount(ctx))
   }
 
-  const goal = [
-    'You have just made an account on this app and you are looking around.',
-    'Find screens you have not seen, and find out what each one is for.',
-  ].join(' ')
-
   const r = await runLoop(ctx, s, {
-    system: SCOUT,
-    goal,
+    mode: 'explore',
+    goal: 'You have just made an account on this app and you are looking around, opening every screen once.',
     worker: s.worker,
     maxTurns: opts.turns ?? 40,
     memory,

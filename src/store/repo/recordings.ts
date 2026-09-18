@@ -61,3 +61,10 @@ export function actionStats(db: DB): Array<{ action_fp: string; tries: number; o
     )
     .all() as Array<{ action_fp: string; tries: number; ok: number; statuses: string }>
 }
+
+/** Everything one worker recorded after a watermark: the requests one action caused. */
+export const sinceFor = (db: DB, worker: string, afterId: number): Recording[] =>
+  db.prepare('SELECT * FROM recordings WHERE worker = ? AND id > ? ORDER BY id').all(worker, afterId) as Recording[]
+
+export const lastId = (db: DB): number =>
+  (db.prepare('SELECT COALESCE(MAX(id),0) id FROM recordings').get() as { id: number }).id

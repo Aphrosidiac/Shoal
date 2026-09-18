@@ -15,7 +15,7 @@ export const BASE: Record<Kind, number> = {
   confirm: 200,
   explore: 100,
   form: 80,
-  mission: 70,
+  mission: 130,
   crossaccount: 60,
   hammer: 40,
 }
@@ -94,7 +94,10 @@ export function scoreOf(db: DB, kind: Kind, payload: Record<string, unknown>, cr
       novelty = 1
       break
   }
-  const lean = kind === 'hammer' || kind === 'crossaccount' ? 1 - u : kind === 'confirm' ? 1 : u
+  // Missions are not exploration. They are the crew walking a goal with a
+  // persona's bad habits, judged at every step, and they are what puts data
+  // in the app — so they do not fade as the map fills.
+  const lean = kind === 'hammer' || kind === 'crossaccount' ? 1 - u : kind === 'confirm' || kind === 'mission' ? 1 : u
   return BASE[kind] * novelty * staleness(createdAt) * Math.max(0.05, lean)
 }
 

@@ -99,7 +99,7 @@ export async function runSwarm(cfg: Config, log: (k: string, m: string) => void)
 
     const sched = new Scheduler(ctx, [
       explorerPool(ctx, (w) => sup.newSession(w), sup.vault, memory),
-      confirmerPool(ctx),
+      confirmerPool(ctx, (w) => sup.newSession(w), sup.vault),
       hammererPool(ctx),
     ])
     await sched.start()

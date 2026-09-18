@@ -8,3 +8,5 @@ fixtures/leaky/*.db-wal
 .bench/
 *.log
 .DS_Store
+
+.env

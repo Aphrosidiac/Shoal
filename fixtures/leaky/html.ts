@@ -72,7 +72,7 @@ function cell(v) {
 }
 
 function renderTable(host, rows, cols, linkBase) {
-  if (!rows || rows.length === 0) { host.innerHTML = '<p>Nothing here yet.</p>'; return }
+  if (!rows || rows.length === 0) { host.innerHTML = '<p>' + (host.dataset.empty || 'Nothing here yet.') + '</p>'; return }
   const use = cols && cols.length ? cols : Object.keys(rows[0])
   const head = '<tr>' + use.map(c => '<th>' + c + '</th>').join('') + '</tr>'
   const body = rows.map(r => '<tr>' + use.map(c =>
@@ -133,18 +133,45 @@ function wireForm(f) {
       if (qs) action = action + (action.indexOf('?') >= 0 ? '&' : '?') + qs
       payload = undefined
     }
+    // UI BUG U2: an optimistic form reports success before it knows
+    if (f.dataset.optimistic) msg(f.dataset.optimistic)
     const r = await api(method, action, payload, headers)
-    if (!r.ok) { msg((r.data && r.data.error) || ('failed with ' + r.status), true); return }
+    if (!r.ok) {
+      if (f.dataset.optimistic) return
+      msg((r.data && r.data.error) || ('failed with ' + r.status), true)
+      // UI BUG U5: the refused form is wiped
+      if (f.dataset.resetOnError) f.reset()
+      return
+    }
     msg('Saved.')
     if (f.dataset.redirect) { location.href = f.dataset.redirect.replace(':id', (r.data && r.data.id) || ''); return }
     // refetch after every write: this is what the page shows you afterwards
-    document.querySelectorAll('[data-list]').forEach(loadList)
+    // UI BUG U3: except for a form that says not to
+    if (!f.dataset.norefresh) document.querySelectorAll('[data-list]').forEach(loadList)
     document.querySelectorAll('[data-one]').forEach(loadOne)
+    document.querySelectorAll('[data-invoice]').forEach(loadInvoiceLine)
     if (f.dataset.reset !== 'no') f.reset()
   })
 }
 
 document.querySelectorAll('form[data-action]').forEach(wireForm)
+
+// The invoice line: stored status next to a derived balance (UI BUG U4 when
+// they disagree), and a disabled pay control with an explanation when the
+// invoice is genuinely fully paid (NOT A BUG).
+async function loadInvoiceLine(host) {
+  const r = await api('GET', host.dataset.invoice)
+  if (!r.ok) return
+  const d = r.data
+  const balance = Number(d.total) - Number(d.paid_amt)
+  const money = (n) => 'RM ' + Number(n).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  host.innerHTML = '<strong>Status: ' + d.status + '</strong> · Total ' + money(d.total) + ' · Outstanding ' + money(balance)
+  const actions = $('#pay-actions')
+  if (actions && balance <= 0 && String(d.status).toUpperCase() === 'PAID') {
+    actions.innerHTML = '<button type="button" disabled>Take a payment</button> <small>This invoice is fully paid.</small> · <a href="/app/invoices">Back to invoices</a>'
+  }
+}
+document.querySelectorAll('[data-invoice]').forEach(loadInvoiceLine)
 document.querySelectorAll('[data-list]').forEach(loadList)
 document.querySelectorAll('[data-one]').forEach(loadOne)
 const lo = $('#logout')

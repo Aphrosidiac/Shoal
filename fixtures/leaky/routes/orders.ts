@@ -56,6 +56,8 @@ export default async function routes(app: FastifyInstance) {
     const qty = Number(b.qty ?? 1)
     const price = Number(b.price ?? 0)
     if (!Number.isFinite(qty) || !Number.isFinite(price)) return reply.code(400).send({ error: 'qty and price must be numbers' })
+    // UI BUG U8: the quantity is refused with a message about a different field.
+    if (qty < 1) return reply.code(400).send({ error: 'Customer is required' })
 
     // BUG 8: the client sends an Idempotency-Key and the server ignores it
     // completely, so a double submit creates two orders.

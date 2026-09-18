@@ -16,6 +16,10 @@ export type Control = {
   href: string
   selector: string
   options: string[]
+  /** aria-checked / aria-expanded / aria-selected, or the native checked state. */
+  checked: string | null
+  expanded: string | null
+  selected: string | null
 }
 
 export type FormShape = {
@@ -39,6 +43,10 @@ export type Snapshot = {
   forms: FormShape[]
   tables: TableShape[]
   text: string[]
+  /** role=status, role=alert, .error, .alert and friends: what the app is telling the user right now. */
+  messages: string[]
+  /** Every visible word on screen, in document order, capped. What the judge reads. */
+  visibleText: string
   fp: string
   urlPattern: string
 }
@@ -87,7 +95,14 @@ const WALK = String.raw`() => {
       if (l) return clean(l.textContent)
     }
     const wrap = el.closest('label')
-    if (wrap) return clean(wrap.textContent)
+    if (wrap) {
+      // The label's own words only. A <select> inside its label would
+      // otherwise contribute every option, and a hint its whole sentence.
+      const copy = wrap.cloneNode(true)
+      copy.querySelectorAll('input, select, textarea, button, small, .hint, .help, [role=tooltip]').forEach((n) => n.remove())
+      const own = clean(copy.textContent)
+      if (own) return own
+    }
     if (el.placeholder) return clean(el.placeholder)
     if (el.name) return clean(el.name)
     if (el.title) return clean(el.title)
@@ -140,6 +155,9 @@ const WALK = String.raw`() => {
       href: el.tagName === 'A' ? (el.getAttribute('href') || '') : '',
       selector: uniq(el),
       options: el.tagName === 'SELECT' ? [...el.options].map((o) => clean(o.value || o.textContent)).slice(0, 20) : [],
+      checked: el.type === 'checkbox' || el.type === 'radio' ? String(!!el.checked) : el.getAttribute('aria-checked'),
+      expanded: el.getAttribute('aria-expanded'),
+      selected: el.getAttribute('aria-selected'),
     })
   }
 
@@ -175,7 +193,26 @@ const WALK = String.raw`() => {
   const text = [...document.querySelectorAll('main p, main li, [role=status], .error, .alert, p')]
     .filter(visible).map((p) => clean(p.textContent)).filter((s) => s.length > 1).slice(0, 12)
 
-  return { url: location.href, path: location.pathname, title: document.title, headings, controls, forms, tables, text }
+  const messages = [...document.querySelectorAll('[role=status], [role=alert], output, .error, .alert, .message, .notice, .toast, .flash, .success, .warning, .invalid-feedback, .help-block, [aria-live]')]
+    .filter(visible).map((m) => (m.textContent || '').replace(/\s+/g, ' ').trim()).filter((s) => s.length > 0).slice(0, 10)
+
+  // Ported from jev-ultrafast/snapshot.js: visible words only, in order,
+  // capped. Off-screen footers and hidden templates do not reach the model.
+  const words = []
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
+  const range = document.createRange()
+  let node, length = 0
+  while ((node = walker.nextNode()) && length < 6000) {
+    const value = node.textContent.replace(/\s+/g, ' ').trim()
+    const parent = node.parentElement
+    if (!value || !parent || parent.closest('script,style,noscript,template') || !visible(parent)) continue
+    range.selectNodeContents(node)
+    const r = range.getBoundingClientRect()
+    if (r.width > 0 && r.height > 0) { words.push(value); length += value.length }
+  }
+  const visibleText = words.join('\n').slice(0, 6000)
+
+  return { url: location.href, path: location.pathname, title: document.title, headings, controls, forms, tables, text, messages, visibleText }
 }`
 
 export async function snapshot(page: Page, urlPattern: (path: string) => string): Promise<Snapshot> {

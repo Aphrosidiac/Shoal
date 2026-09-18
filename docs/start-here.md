@@ -53,12 +53,11 @@ is no mode where an agent acts without being recorded, and retrofitting that is
 how it ends up with holes.
 
 **M1 is done when** it makes an account on the fixture unaided, maps twenty
-pages, and `shoal bench` prints five numbers — then the same run against a
-local driver, and the gap between the two is the honest answer about local
-models.
+pages, and `shoal bench` prints five numbers.
 
-That gate was met, with one thing it could not answer: see the note at the top
-of [../fixtures/leaky/BENCH.md](../fixtures/leaky/BENCH.md).
+That gate was met. The local-model leg it once carried is gone with the
+rebuild: there is one model, Jev, and `src/bench/judge.ts` measures it on its
+own. See [../fixtures/leaky/BENCH.md](../fixtures/leaky/BENCH.md).
 
 ## The three questions that can kill this
 
@@ -88,7 +87,7 @@ central bet of the design is wrong and it is better to know at M4 than at M6.
 | fingerprints, replay, hammering | [recording.md](recording.md) |
 | how bugs are caught without a database | [finding-bugs.md](finding-bugs.md) |
 | models, providers, cost, caching | [ai.md](ai.md) |
-| running the planner on a subscription | [claude-code.md](claude-code.md) |
+| the optional planner on a subscription | [claude-code.md](claude-code.md) |
 | how we know Shoal works | [calibration.md](calibration.md) |
 | commands, config, packaging, privacy | [cli.md](cli.md) |
 | ranking and what a finding looks like | [report.md](report.md) |

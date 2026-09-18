@@ -63,3 +63,26 @@ nonsense, costs a fortune, and you stop trusting the output in a week. Bugs get
 declared by dumb deterministic checks that are right every time.
 
 **The LLM is a finder. It is never a judge.**
+
+## The correction (2026-09-19)
+
+That rule was right about LLMs and wrong about judging. Banning every model
+from the second job left only the bugs an `if` statement can prove from HTTP
+traffic — races, leaks, dropped fields, paging holes — and not one bug a user
+would see on a screen. The stated goal was a system that goes through the app
+in the browser and finds every bug it can. The built system was an HTTP fuzzer
+with a browser bolted on to bootstrap it.
+
+The way out is a model that does not generate: TypeSafe's Jev returns typed
+answers with calibrated probabilities, in a few hundred milliseconds, for a
+hundredth of a cent a screen. A probability is a measurement code can
+threshold; a paragraph is a claim code has to believe. So the split stands,
+with the second job re-divided:
+
+**Agents find. Calibrated judgments filter. Reproduction decides.**
+
+Jev drives every step — it picks a control from a closed set and never writes
+a string — and judges every screen. Code still owns the loop, every count,
+every comparison, every value typed. And nothing reaches the report until it
+has been walked again in a fresh account and judged the same way twice.
+See [ai.md](ai.md).

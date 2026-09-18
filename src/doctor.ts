@@ -5,6 +5,8 @@ import { probe } from './target/probe.js'
 import { shoalDir } from './store/db.js'
 import { MailCatcher } from './signup/mail.js'
 import { makeModel } from './model/index.js'
+import { Jev, noul, asNoul } from './jev/client.js'
+import { jevConfig } from './jev/setup.js'
 
 const ok = (label: string, detail: string): string => `  ${label.padEnd(10)} ${detail}`
 const bad = (label: string, detail: string): string => `  ${label.padEnd(10)} ${detail}   ✗`
@@ -49,44 +51,50 @@ export async function doctor(cfg: Config): Promise<number> {
       : ok('mail', `localhost:${cfg.mailPort}   busy — email verification will be skipped`)
   )
 
-  for (const tier of ['driver', 'planner'] as const) {
-    const t = cfg[tier]
+  // Jev: one real question, so a wrong key or a dead network fails here and
+  // not on the first turn of a run.
+  try {
+    const jev = new Jev(jevConfig(cfg), null)
+    const t0 = Date.now()
+    const r = await jev.ask('doctor', { screen: 'Invoice INV-1  Total 1,300  Status PAID  [button Pay now]' }, {
+      contradiction: noul('Does `screen` show a paid status next to a control that only makes sense when unpaid?'),
+    })
+    const p = asNoul(r.answers.contradiction)
+    lines.push(
+      p >= 0.7
+        ? ok('jev', `typesafe / ${r.model}   answered in ${Date.now() - t0}ms (${r.usage.input_tokens} tokens, contradiction ${(p * 100).toFixed(0)}%)`)
+        : bad('jev', `typesafe / ${r.model}   answered, but put a planted contradiction at ${(p * 100).toFixed(0)}% — the judge is not seeing straight`)
+    )
+    if (cfg.jev.maxUsd !== null) lines.push(ok('jev', `budget cap $${cfg.jev.maxUsd.toFixed(2)}`))
+  } catch (e) {
+    lines.push(bad('jev', (e as Error).message.split('\n')[0]!))
+    fail = true
+  }
+
+  if (cfg.planner) {
+    const t = cfg.planner
     if (t.provider === 'claude-code' && process.env.ANTHROPIC_API_KEY) {
       lines.push(
         bad(
-          tier,
+          'planner',
           'claude-code with ANTHROPIC_API_KEY set. That variable outranks your subscription OAuth token, ' +
             'so every call would be billed at API rates. Unset it.'
         )
       )
       fail = true
-      continue
+    } else {
+      try {
+        const t0 = Date.now()
+        const m = await makeModel(t, 'planner')
+        const res = await m.call({ system: 'Answer briefly.', messages: [{ role: 'user', content: 'Say ok.' }], tools: [], maxTokens: 16 })
+        lines.push(ok('planner', `${t.provider} / ${m.id}   ${res.text ? 'answered' : 'answered with nothing'}, in ${Date.now() - t0}ms`))
+      } catch (e) {
+        lines.push(bad('planner', `${t.provider} / ${t.model}   ${(e as Error).message.split('\n')[0]}`))
+        fail = true
+      }
     }
-    try {
-      const t0 = Date.now()
-      const m = await makeModel(t, tier)
-      const res = await m.call({
-        system: 'Answer with the tool.',
-        messages: [{ role: 'user', content: 'Say ok.' }],
-        tools: [
-          {
-            name: 'done',
-            description: 'Say ok.',
-            schema: { type: 'object', properties: { result: { type: 'string' } }, required: ['result'], additionalProperties: false },
-          },
-        ],
-        maxTokens: 64,
-      })
-      const how = res.tool
-        ? `called the ${res.tool.name} tool`
-        : res.text
-        ? 'answered in prose, so every turn will go through the repair loop'
-        : 'answered with nothing at all'
-      lines.push(ok(tier, `${t.provider} / ${m.id}   ${how}, in ${Date.now() - t0}ms`))
-    } catch (e) {
-      lines.push(bad(tier, `${t.provider} / ${t.model}   ${(e as Error).message.split('\n')[0]}`))
-      fail = true
-    }
+  } else {
+    lines.push(ok('planner', 'none configured — missions are written from the map by code'))
   }
 
   const dir = shoalDir(cfg.dir)

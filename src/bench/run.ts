@@ -15,7 +15,7 @@ const repo = resolve(here, '../..')
 const FIXTURE = join(repo, 'fixtures', 'leaky')
 const PORT = Number(process.env.SHOAL_BENCH_PORT ?? 4100)
 
-type Expect = { bug: number; check: string; endpoint: string; why: string }
+type Expect = { bug: number; check: string | string[]; endpoint?: string; screen?: string; why: string }
 
 /**
  * The instrument. Five numbers, every one of which can move in the wrong
@@ -64,10 +64,7 @@ export async function runBench(flags: Flags): Promise<number> {
         ui: { enabled: false },
         ...(flags.explorers ? { explorers: Number(flags.explorers) } : {}),
         ...(flags.hammerers ? { hammerers: Number(flags.hammerers) } : {}),
-        ...(flags.driver ? { driver: { model: String(flags.driver) } } : {}),
-        ...(flags.provider
-          ? { driver: { provider: String(flags.provider), model: String(flags.driver ?? ''), baseUrl: String(flags.baseUrl ?? '') } }
-          : {}),
+        ...(flags['jev-max-usd'] ? { jev: { maxUsd: Number(flags['jev-max-usd']) } } : {}),
       },
       process.cwd()
     )
@@ -94,20 +91,29 @@ export async function runBench(flags: Flags): Promise<number> {
   const found = new Set<number>()
   const falsePositives: string[] = []
   for (const f of report.findings) {
-    const repro = JSON.parse(f.repro_json) as { check?: string }
+    const repro = JSON.parse(f.repro_json) as { check?: string; screen?: string }
     const check = repro.check ?? f.kind
     const endpoint = f.endpoint_id ? eps.get(f.endpoint_id) ?? '' : ''
-    const hit = expect.find((e) => e.check === check && (e.endpoint === '*' || e.endpoint === endpoint))
+    const screen = repro.screen ?? ''
+    const hit = expect.find((e) => {
+      const checks = Array.isArray(e.check) ? e.check : [e.check]
+      if (!checks.includes(check)) return false
+      if (e.screen) return e.screen === '*' ? screen !== '' : e.screen === screen
+      return e.endpoint === '*' || e.endpoint === endpoint
+    })
     if (hit) found.add(hit.bug)
-    else falsePositives.push(`${check} @ ${endpoint || '(no endpoint)'} — ${f.title}`)
+    else falsePositives.push(`${check} @ ${screen || endpoint || '(nowhere)'} — ${f.title}`)
   }
 
-  const missed = expect.filter((e) => !found.has(e.bug))
+  // A bug may have more than one way of being seen — #5 is a read-back over
+  // HTTP and a dropped value on a screen — so the count is of bugs, not rows.
+  const bugs = [...new Set(expect.map((e) => e.bug))]
+  const missed = bugs.filter((b) => !found.has(b)).map((b) => expect.find((e) => e.bug === b)!)
   const perAction = report.spend.perAction
   const lines = [
     '',
-    `found            ${found.size} of ${expect.length}`,
-    `missed           ${missed.length ? missed.map((m) => `#${m.bug} (${m.check})`).join(', ') : '—'}`,
+    `found            ${found.size} of ${bugs.length}`,
+    `missed           ${missed.length ? missed.map((m) => `#${m.bug} (${Array.isArray(m.check) ? m.check[0] : m.check})`).join(', ') : '—'}`,
     `false positives  ${falsePositives.length}`,
     `wall clock       ${Math.round(wall / 60000)}m ${Math.round((wall % 60000) / 1000)}s`,
     `model calls      ${report.spend.calls}        (${perAction.toFixed(2)} per action)`,

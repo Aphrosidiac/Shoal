@@ -480,3 +480,93 @@ Nine of eleven with no false positives. Eight were reached repeatedly. The
 ninth was always going to be #10, and #10 is the one bug in the fixture that
 exists to prove a short run cannot see everything. Stopping here means M6 is
 **not met and not disproved** — the only honest statement available.
+
+## The rebuild — 2026-09-19
+
+Everything below this line is the Jev rebuild: one model (TypeSafe Jev)
+drives every step and judges every screen, code owns every count, and a
+screen suspicion is confirmed by walking it again in a fresh account. The
+fixture grew ten planted screen bugs (#12–#21) and gained one nobody planted
+(#22, user input rendered as HTML, found on the first run). Scores are out of
+22 from here on, and screen findings are matched on the screen they were
+found on rather than an endpoint.
+
+### The judge on its own
+
+`npx tsx src/bench/judge.ts` — one scripted browser, every planted screen
+bug and non-bug, the contract asked at each step. No swarm, no queue.
+
+```
+planted screen bugs caught   10 of 10   (+ #7 seen through the browser)
+non-bug screens misjudged     0 of 7
+requests                      17
+tokens                        52,551
+spend                         $0.0022
+median latency                ~300 ms
+```
+
+Three things were wrong before this number was right, and each is in
+docs/decisions.md: a snapshot taken before the click's fetch had started
+(every submit looked like a dead control), a validation question that could
+not see the form had no such field, and a loading question that counted the
+navigation bar as content.
+
+### The three swarm runs
+
+Read the first with its false positives: every one was a code gate missing,
+not a judgment wrong — a submit the browser itself refused, a sign-up link on
+a public page, and `<tag>` swallowed by innerHTML, which turned out to be #22.
+The third run's one "false positive" is #17 scored on the screen it landed on
+instead of the screen the link was on; findings are anchored to the control's
+screen now, and it counts as 14 of 22 with none.
+
+Model calls per action stopped meaning "is the map a cache" — every step is
+one request by design — and now means what a step costs: about $0.0001.
+
+## 2026-09-18 18:03 — jev rebuild, first swarm run
+
+```
+found            9 of 21
+missed           #2 (money.overpaid), #3 (leak.crossaccount), #7 (wrong.consistency), #9 (auth.role), #10 (slow), #13 (screen.false_success), #15 (screen.contradiction), #16 (screen.lost_input), #17 (screen.wrong_destination), #19 (screen.wrong_validation), #20 (screen.loading_stuck), #21 (screen.logged_out)
+false positives  6
+wall clock       8m 4s
+model calls      1037        (3.43 per action)
+spend            $0.13
+FALSE POSITIVES — each one of these fails the gate:
+  screen.dropped_value @ /app/orders/:id — /app/orders/new accepts "Notes" and shows something else
+  screen.dropped_value @ /app/customers/:id — /app/customers/new accepts "Name" and shows something else
+  screen.dropped_value @ /app/customers/:id — /app/customers/new accepts "Phone" and shows something else
+  screen.logged_out @ /register — link "Create an account" on / ends the session
+  screen.dead_control @ /app/customers — button "Quick add" on /app/customers does nothing
+  screen.dead_control @ /register — button "Create account" on /register does nothing
+```
+
+pages 35, endpoints 52, accounts 80, requests 13768, actions 302
+
+## 2026-09-18 18:16 — jev rebuild, second run: native-refusal gate, dedup, trail shrink, missions outrank
+
+```
+found            11 of 23
+missed           #3 (leak.crossaccount), #5 (wrong.readback), #7 (wrong.consistency), #10 (slow), #13 (screen.false_success), #15 (screen.contradiction), #16 (screen.lost_input), #17 (screen.wrong_destination), #19 (screen.wrong_validation), #20 (screen.loading_stuck), #21 (screen.logged_out), #5 (screen.dropped_value)
+false positives  0
+wall clock       10m 3s
+model calls      345        (0.31 per action)
+spend            $0.05
+```
+
+pages 32, endpoints 52, accounts 42, requests 9024, actions 1103
+
+## 2026-09-18 18:28 — jev rebuild, third run: creation chains kept in trails, untestable rewalks retried, 6 hammerers
+
+```
+found            13 of 22
+missed           #3 (leak.crossaccount), #5 (wrong.readback), #7 (wrong.consistency), #10 (slow), #13 (screen.false_success), #15 (screen.contradiction), #16 (screen.lost_input), #17 (screen.wrong_destination), #21 (screen.logged_out)
+false positives  1
+wall clock       10m 4s
+model calls      436        (1.10 per action)
+spend            $0.06
+FALSE POSITIVES — each one of these fails the gate:
+  screen.wrong_destination @ /app/orders — link "View all invoices" on /app opens the wrong screen
+```
+
+pages 30, endpoints 52, accounts 45, requests 6047, actions 396

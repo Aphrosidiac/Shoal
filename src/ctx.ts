@@ -7,6 +7,7 @@ import type { Throttle } from './budget/throttle.js'
 import type { MailCatcher } from './signup/mail.js'
 import type { AuthStore } from './signup/auth.js'
 import type { Meter } from './budget/meter.js'
+import type { Jev } from './jev/client.js'
 
 /**
  * The handful of things every worker needs. Passed explicitly rather than
@@ -21,12 +22,14 @@ export type Ctx = {
   patterns: Patterns
   app: AppWatch
   models: Models
+  /** The judge and the driver. Every browser step goes through it. */
+  jev: Jev
   throttle: Throttle
   mail: MailCatcher | null
   auth: AuthStore
   meter: Meter
   log: (kind: string, message: string) => void
   stopping: () => boolean
-  /** Off only in the M1 bench, where we want to measure the model itself. */
+  /** Off only in a bench leg that wants to measure Jev driving every step. */
   driverPreferFast?: boolean
 }

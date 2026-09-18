@@ -11,37 +11,29 @@ to spend.
 | `explorers` | 3 | browser agents. Heavy — RAM, CPU, and most of the LLM bill |
 | `hammerers` | 16 | pure HTTP workers. Nearly free. This is what finds races |
 | `confirmers` | 2 | replay suspicions to see if they are real. Nearly free |
-| `driverModel` | cheap and fast | clicking around. The bulk of the calls |
-| `plannerModel` | good | goals, and looking at anything surprising |
+| `rewalks` | 2 | fresh-account walks a screen suspicion must survive, every one agreeing |
+| `jev.maxUsd` | none | hard stop on TypeSafe spend for the run directory |
+| `jev.suspect` | 0.85 | the probability at which a judgment becomes a suspicion |
 | `budgetPerHour` | none | optional ceiling in dollars or tokens. It paces itself to fit |
 | `pace` | sensible | maximum requests per second at the app, so the dev server survives |
 | `mailPort` | 1025 | the local SMTP catcher agents read verification links from |
 
-## Models and providers
+## The model
 
-Each tier is configured independently and either can point at a different
-provider. Full reasoning in [ai.md](ai.md).
+One model, TypeSafe Jev, does the driving and the judging. Full reasoning in
+[ai.md](ai.md).
 
 | Knob | Default | Notes |
 |---|---|---|
-| `driver.provider` | `anthropic` | or `openai-compatible` for OpenRouter, Ollama, LM Studio, vLLM |
-| `driver.model` | `claude-haiku-4-5` | $1 / $5 per 1M. About 90% of all calls |
-| `planner.provider` | `anthropic` | |
-| `planner.model` | `claude-opus-5` | $5 / $25 per 1M. `claude-sonnet-5` is the cheaper option |
-| `driver.baseUrl` | — | e.g. `http://localhost:11434/v1` for Ollama |
-| `planner.provider` = `claude-code` | — | runs the planner on your Claude subscription, no API bill |
-| `plannerCallsPerHour` | 20 | replaces the dollar ceiling in `claude-code` mode |
+| `TYPESAFE_API_KEY` | — | environment or `.env`; `shoal doctor` sends one planted contradiction to check it |
+| `jev.model` | `jev-latest` | a versioned id such as `jev-1.13.0` pins a run to one set of weights |
+| `jev.maxUsd` | none | measured: about $0.05 per ten minutes with three explorers |
+| `jev.suspect` | 0.85 | lower catches more and rewalks more; the rewalk is the safety net |
+| `planner` | `null` | optional generative tier for extra missions: `{"provider": "anthropic" \| "openai-compatible" \| "claude-code", "model": ...}` |
+| `plannerCallsPerHour` | 20 | meters the planner in `claude-code` mode |
 
-The combination worth knowing about:
-
-```
-driver:  ollama / a small local model   free, unlimited, runs all night
-planner: claude-code                    your subscription, thinks rarely
-```
-
-That turns a day-long run from tens of dollars into a couple, because the
-driver's job — "here are fourteen elements, pick one" — is close to the best
-case for a small local model.
+There is no local-model option. The judging depends on calibrated
+probabilities, and Jev is the model trained to return them.
 
 ## The defaults, and why
 

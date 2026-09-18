@@ -12,23 +12,32 @@ import { findingFp } from '../../map/fingerprint.js'
 import { firstObject } from '../../watch/types.js'
 import type { Signal } from '../../watch/types.js'
 import type { Kind } from '../../store/repo/findings.js'
+import type { Session } from '../../browser/session.js'
+import type { Vault } from '../../signup/vault.js'
+import { rewalk } from '../../replay/rewalk.js'
+import * as queue from '../../store/repo/queue.js'
+import { scoreOf } from '../../queue/score.js'
+import type { Step } from '../../agent/trail.js'
 
 /**
  * Replay a suspicion and decide. No model is involved anywhere in here, which
  * is the whole defence against a report full of confident nonsense: agents are
  * allowed to be wrong, and this is the gate they have to get through.
  */
-export async function runConfirm(ctx: Ctx, rp: Replayer, item: Item): Promise<string> {
+export type Browser = { session: () => Promise<Session>; vault: Vault }
+
+export async function runConfirm(ctx: Ctx, rp: Replayer, item: Item, browser?: Browser): Promise<string> {
   const p = JSON.parse(item.payload_json) as Record<string, unknown>
-  if (typeof p.suspicionId === 'number') return confirmSuspicion(ctx, rp, p.suspicionId)
+  if (typeof p.suspicionId === 'number') return confirmSuspicion(ctx, rp, p.suspicionId, browser)
   if (typeof p.probe === 'string') return runProbe(ctx, rp, p)
   return 'nothing to confirm'
 }
 
-async function confirmSuspicion(ctx: Ctx, rp: Replayer, id: number): Promise<string> {
+async function confirmSuspicion(ctx: Ctx, rp: Replayer, id: number, browser?: Browser): Promise<string> {
   const s = suspicions.byId(ctx.db, id)
   if (!s || s.state !== 'open') return 'already dealt with'
   const note = safeNote(s.note)
+  if (s.source === 'screen') return confirmScreen(ctx, s.id, note, browser)
   const rec = s.recording_id ? recordings.byId(ctx.db, s.recording_id) : undefined
 
   if (!rec) {
@@ -107,6 +116,57 @@ async function confirmSuspicion(ctx: Ctx, rp: Replayer, id: number): Promise<str
   })
   suspicions.setState(ctx.db, id, f ? 'confirmed' : 'unreproduced')
   return f ? `confirmed ${check}` : `${check} did not reproduce`
+}
+
+/**
+ * A screen suspicion has no request to replay; it has a trail. Walk it again
+ * in a fresh account and ask the same question of the same screen. Every
+ * attempt must agree: a judgment that holds one time in two is not a bug.
+ */
+async function confirmScreen(ctx: Ctx, id: number, note: Record<string, unknown>, browser?: Browser): Promise<string> {
+  if (!browser) {
+    return 'no browser to walk it again'
+  }
+  const trail = (note.trail as Step[] | undefined) ?? []
+  const check = String(note.check ?? 'screen.unknown')
+  if (!trail.length) {
+    suspicions.setState(ctx.db, id, 'unreproduced')
+    return 'no trail behind it'
+  }
+  const session = await browser.session()
+  let untestable: string | null = null
+  const f = await decide(ctx, {
+    onUntestable: (why) => (untestable = why),
+    check,
+    kind: (note.kind as Kind) ?? 'wrong',
+    title: String(note.title ?? check),
+    detail: String(note.detail ?? ''),
+    endpointId: null,
+    attempts: ctx.cfg.rewalks,
+    requireAll: true,
+    screen: String(note.urlPattern ?? ''),
+    fingerprint: String(note.fp ?? findingFp(String(note.urlPattern ?? '?'), check, '')),
+    attempt: () => rewalk(ctx, session, browser.vault, trail, { check, shape: shapeOf(note), goal: String(note.goal ?? '') }),
+  })
+  if (!f && untestable) {
+    // Could not walk it — no account, the app was down — is a third answer.
+    // Leave it open and try again later, three times, then let it go.
+    const retries = Number(note.retries ?? 0)
+    if (retries < 3) {
+      suspicions.setNote(ctx.db, id, { ...note, retries: retries + 1 })
+      suspicions.setState(ctx.db, id, 'open')
+      queue.push(ctx.db, { kind: 'confirm', payload: { suspicionId: id }, score: scoreOf(ctx.db, 'confirm', {}) * 0.5, dedupeKey: `confirm:${id}:retry${retries + 1}` })
+      return `could not walk ${check} (${untestable}); will try again`
+    }
+  }
+  suspicions.setState(ctx.db, id, f ? 'confirmed' : 'unreproduced')
+  return f ? `confirmed ${check} by walking it again` : `${check} did not hold on a second walk`
+}
+
+function shapeOf(note: Record<string, unknown>): string {
+  const fp = String(note.fp ?? '')
+  void fp
+  return ''
 }
 
 async function runProbe(ctx: Ctx, rp: Replayer, p: Record<string, unknown>): Promise<string> {

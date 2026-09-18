@@ -70,7 +70,8 @@ export function explorerPool(
  * two that find the most valuable bugs, which is why the answer to any model
  * failure is to keep these running rather than stop.
  */
-export function confirmerPool(ctx: Ctx): Pool {
+export function confirmerPool(ctx: Ctx, make: (worker: string) => Promise<Session>, vault: Vault): Pool {
+  const sessions = new Map<string, Session>()
   return {
     name: 'confirmer',
     size: ctx.cfg.confirmers,
@@ -78,7 +79,25 @@ export function confirmerPool(ctx: Ctx): Pool {
     needsModel: false,
     make: async (worker) => {
       const rp = new Replayer(ctx, worker)
-      return (item: Item) => runConfirm(ctx, rp, item)
+      // A browser only when a screen suspicion needs walking again; an HTTP
+      // replay never pays for one.
+      const browser = {
+        session: async () => {
+          let s = sessions.get(worker)
+          if (!s) {
+            s = await make(worker)
+            sessions.set(worker, s)
+          }
+          return s
+        },
+        vault,
+      }
+      return (item: Item) => runConfirm(ctx, rp, item, browser)
+    },
+    release: async (worker) => {
+      const s = sessions.get(worker)
+      sessions.delete(worker)
+      if (s) await s.stop()
     },
   }
 }

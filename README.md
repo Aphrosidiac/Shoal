@@ -1,13 +1,17 @@
 # Shoal
 
-**A swarm of agents that use your app until it breaks.**
+**A swarm that uses your app in the browser and reads every screen for bugs.**
 
-Point it at your app on localhost. It signs itself up, clicks around, works out
-what the app does, and then hammers it. Ten minutes finds a few things. A day
+Point it at your app on localhost. It signs itself up, walks every screen,
+works out what the app does, then sends in a crew with goals and bad habits —
+the one who double-clicks Pay, the one who types −1, the one who leaves a
+required field empty. After every action, every screen is judged against a
+contract of what a screen may not do. Ten minutes finds a few things. A day
 finds about everything it is going to find.
 
 You write nothing. No test files, no describing your app, no listing your
-routes, no fixtures, no credentials. A URL is the whole setup.
+routes, no fixtures, no credentials. A URL and a
+[TypeSafe](https://typesafe.ai) key are the whole setup.
 
 ```bash
 shoal run http://localhost:3000
@@ -20,28 +24,35 @@ minutes.
 
 ## Why this is not another AI test generator
 
-Most tools in this space ask a model whether something looks wrong. That
-produces a report full of confident nonsense, and one bad finding costs more
-trust than nine good ones earn.
+Most tools in this space ask a language model whether something looks wrong.
+That produces a report full of confident nonsense, and one bad finding costs
+more trust than nine good ones earn. The first version of Shoal reacted by
+banning models from judging anything at all — and found only what an `if`
+statement can prove from HTTP traffic. Backend bugs. Not one thing you would
+see on a screen.
 
-Shoal splits the job in two, and the split is the entire design:
+This version uses a different kind of model for the judging, and the
+difference is the design:
 
-> **Agents find. Dumb checks judge.**
+> **Agents find. Calibrated judgments filter. Reproduction decides.**
 
-An agent that sees something odd files a *suspicion* — "I entered two lines of
-650 and the total says 650". Nothing reaches the report. A confirmer then
-replays the recorded HTTP, five times, **with no model involved at all**, and
-only what reproduces becomes a finding. The agent is allowed to be wrong. That
-is what the gate is for.
+The judge is [Jev](https://docs.typesafe.ai/introduction), a System One model.
+It does not write. Send it a screen and a typed question — *does this screen
+show two facts about one record that cannot both be true?* — and it returns a
+calibrated probability, in about 300 ms, for a fiftieth of a cent. Thirty
+questions about one screen cost the same round trip as one. Every answer is a
+number code can threshold, not a paragraph code has to believe.
 
-The second idea makes slow agents catch fast bugs:
+A probability above 0.85 files a *suspicion*. Nothing reaches the report. A
+confirmer then walks the same steps again **in a brand new account** and asks
+the same question of the same screen, twice, and only what holds every time
+becomes a finding. HTTP suspicions are still replayed at HTTP speed, eight at
+once behind a barrier, with no model involved — the race-catching half of the
+old design is intact. It just stopped being the only half.
 
-> **The browser is for learning. HTTP is for repeating.**
-
-An agent takes three seconds to click "Pay". Useless for races. But while it
-clicks, Shoal records the request behind the button — so from then on that call
-can be fired eight times inside the same millisecond, with no browser and no
-model. The agent explores once; the swarm replays forever.
+And where the answer is a comparison, a count, a number or a date, there is no
+model at all. Jev is asked whether the phone number is *shown*; code decides
+whether the one shown is the one that was typed.
 
 ---
 
@@ -49,6 +60,26 @@ model. The agent explores once; the swarm replays forever.
 
 Every check below needs **zero** knowledge of what your app does, and none of
 them require you to write anything.
+
+**Through the screen** — judged after every action, confirmed by walking it
+again in a fresh account:
+
+| | Caught by |
+|---|---|
+| a Save that does nothing | no change, no request, and a judgment that a user expected one |
+| "Saved." on a request that failed | the recorder's status and the screen's word, side by side |
+| a value accepted and shown differently afterwards | Jev says the field is shown; code says it is not that value |
+| "Saved." over a list that was never refreshed | the list, counted, and the confirmation, read |
+| a status and a control that cannot both be true | one question, one probability |
+| a refused form that wipes what was typed | field values before and after, with an error on screen |
+| a validation message about the wrong field, or a field the form does not have | two questions over `entered` and `messages` |
+| a link that opens the wrong screen | the label and the heading, compared |
+| `undefined`, `NaN`, `{{template}}`, a stack frame, lorem ipsum | a regex, then a judgment for the ones a regex cannot name |
+| a screen that never finishes loading | the network went quiet and "Loading…" is still the content |
+| an ordinary click that lands on the login page | a password field that was not there before |
+| user input rendered as HTML | a `<tag>` typed in, and the text came back without it |
+
+**Through the traffic** — replayed at HTTP speed, no model:
 
 | | Caught by |
 |---|---|
@@ -62,9 +93,6 @@ them require you to write anything.
 | 5xx, stack traces, SQL in a body, slow paths | the traffic alone |
 | two endpoints disagreeing about one object | reading it both ways, back to back |
 
-And one class no deterministic check can reach: an agent noticing that the
-screen contradicts something it did three steps ago.
-
 ---
 
 ## Try it in two minutes
@@ -77,26 +105,15 @@ npm install
 npx playwright install chromium
 ```
 
-Shoal needs a driver model. The cheapest good option is a small local one:
+Shoal drives and judges with [TypeSafe Jev](https://docs.typesafe.ai). Get a
+key from [console.typesafe.ai](https://console.typesafe.ai) and put it in
+`.env`:
 
 ```bash
-brew install ollama && ollama serve &
-ollama pull qwen3:1.7b
-```
+echo 'TYPESAFE_API_KEY=...' > .env
 
-```bash
 cat > shoal.config.json <<'JSON'
-{
-  "url": "http://localhost:4100",
-  "driver":  { "provider": "openai-compatible",
-               "baseUrl": "http://localhost:11434/v1",
-               "model": "qwen3:1.7b",
-               "extra": { "reasoning_effort": "none" } },
-  "planner": { "provider": "openai-compatible",
-               "baseUrl": "http://localhost:11434/v1",
-               "model": "qwen3:1.7b",
-               "extra": { "reasoning_effort": "none" } }
-}
+{ "url": "http://localhost:4100", "jev": { "maxUsd": 1 } }
 JSON
 
 npm run fixture          # a deliberately broken app on :4100
@@ -107,14 +124,18 @@ npm run shoal -- run --for 30m
 Watch it at **http://localhost:7717**. `npm run shoal -- report` prints what it
 found.
 
-> `"extra": {"reasoning_effort": "none"}` is worth more than any other line in
-> that file. On `qwen3:1.7b` it takes a driver turn from 13 seconds to 1, for
-> the same answer. Every local runtime has one knob like this and no two agree
-> on its name, so `extra` is merged into the request body verbatim.
+`maxUsd` is a hard stop for the run directory. A step costs about 3,000 input
+tokens and Jev charges $0.042 per million of them, so a dollar is roughly eight
+thousand judged screens. There is no local-model option: the judging depends
+on calibrated probabilities, and that is what Jev is trained for. The only
+thing that leaves your machine is the visible text and control table of your
+app's screens.
 
-Prefer to pay rather than run a model? Set `ANTHROPIC_API_KEY` and use
-`{"provider": "anthropic", "model": "claude-haiku-4-5"}`. Either way it only
-ever talks to localhost.
+To measure the judge on its own before trusting it with a run:
+
+```bash
+npx tsx src/bench/judge.ts   # every planted screen bug and non-bug, judged, for about a cent
+```
 
 ---
 
@@ -124,24 +145,28 @@ ever talks to localhost.
    http://localhost:3000
             │
             ▼
-   SCOUT ── one agent. Signs itself up, clicks around, works out
-     │      what the app is. Writes to the MAP.
+   SCOUT ── signs itself up and walks every untried link, in code.
+     │      Jev reads each screen and says what kind it is. Writes the MAP.
      ▼
    MAP ──── pages, forms, fields, the API call behind each button,
-     │      what leads where. Persistent — run #10 starts where #9
-     │      stopped. Also a cache: most turns call no model at all.
+     │      what leads where. Persistent — run #10 starts where #9 stopped.
+     │      Missions are written from it by code: "make one, check it is there."
      ▼
-   CREW ─── many agents, each with a persona and a goal.
-     │      "You submit the form twice because the first click felt slow."
+   CREW ─── many agents, each with a persona and a goal. One Jev request
+     │      per step: which control advances the goal (a closed set, never
+     │      a string), what kind each field is (code picks the value), and
+     │      thirty questions about what the last action did to the screen.
      │
      ├────► RECORDER ── every request and response, per agent, per
      │                  account, per screen, per app build
      ▼
-   WATCHERS ─ deterministic checks over the recordings. No LLM. Ever.
-     │        They produce suspicions, never findings.
+   JUDGE ── code first (a regex, a count, a status against a message),
+     │      then Jev's probabilities, thresholded. Suspicions, never findings.
+   WATCHERS ─ deterministic checks over the recordings. No model. Ever.
      ▼
-   REPLAY ── re-runs it at HTTP speed, several times, sometimes eight
-     │       at once behind a barrier. Did it happen again?
+   CONFIRM ─ an HTTP suspicion is replayed at HTTP speed, eight at once
+     │       behind a barrier. A screen suspicion is walked again in a fresh
+     │       account and judged again. Did it happen every time?
      ▼
    REPORT ── only what happened again, with the shortest repro that
              still fails, and a count instead of a thousand rows.
@@ -159,8 +184,11 @@ toward hammering on its own.
 1. **Localhost only.** Never production, never a live system, no exceptions.
    Shoal refuses to start against anything else — that is what lets agents be
    genuinely reckless.
-2. **Agents find, dumb checks judge.** No model may declare a bug.
-3. **Browser to learn, HTTP to repeat.**
+2. **Agents find, calibrated judgments filter, reproduction decides.** No
+   generative model may declare a bug. A typed probability may file a
+   suspicion; only a second walk or a replay can confirm one.
+3. **Anything code can compute, code computes.** Jev is never asked to count,
+   compare a number, read a date, or write a value.
 4. **Signup is the reset.** A fresh account is a fresh world. No database
    clone, no seed data, no fixtures.
 5. **There is no "run".** A queue that never empties. Stop it whenever.
@@ -183,13 +211,11 @@ Then: *"start my dev server and point Shoal at it."* Tools are `shoal_start`,
 and `shoal_stop`. Confirmed findings are pushed into the session as they are
 confirmed, rather than waiting to be asked for.
 
-The planner can also run on your Claude subscription rather than API billing
-(`"planner": {"provider": "claude-code"}`), which closes the loop: a bug lands
-in your session, you fix it, the dev server hot-reloads, Shoal notices the new
-build and re-checks the finding by itself. Two traps on that path — `--bare`
-silently refuses subscription credentials, and `ANTHROPIC_API_KEY` outranks the
-OAuth token — are both hard failures in `doctor` rather than surprises on an
-invoice. See [docs/claude-code.md](docs/claude-code.md).
+An optional generative planner can write extra missions on your Claude
+subscription (`"planner": {"provider": "claude-code"}`); missions are written
+from the map by code without one. The loop it closes: a bug lands in your
+session, you fix it, the dev server hot-reloads, Shoal notices the new build
+and re-checks the finding by itself. See [docs/claude-code.md](docs/claude-code.md).
 
 ---
 
@@ -268,8 +294,11 @@ Worth knowing before you point it at something.
 - **It cannot get into an OAuth-only or invite-only app.** It needs a signup
   form with an email and a password. If your app verifies email, point its SMTP
   at `localhost:1025` and it reads its own verification links.
-- **It needs a model.** A small local one is enough for ~90% of the calls; the
-  planner is used rarely.
+- **It needs a TypeSafe key.** The judging depends on calibrated
+  probabilities, and Jev is the model trained for them. There is no local
+  option.
+- **It reads text, not pixels.** Overlap, overflow, contrast and colour are
+  not judged. That is a different piece of work.
 - **It is slow by nature, and that is the design.** Ten minutes is a smoke
   test. The interesting things — a list too big to page correctly, a query that
   is only slow once there are rows — cannot exist until it has spent hours
@@ -295,8 +324,8 @@ gate — is still unmeasured. One command closes it, and it is at the top of
 ## Privacy
 
 Recordings contain whatever is in your dev database, and all of it stays in
-`.shoal/run.db` on your machine. Two things reach a network: the driver and the
-planner, which are sent page snapshots — structure plus visible text. Run with
+`.shoal/run.db` on your machine. One thing reaches a network: Jev, which is sent
+page snapshots — headings, messages, the control table and visible text. Run with
 `--redact` to scrub values from sensitive-looking fields before anything is
 stored or sent, or point both tiers at a local model and nothing leaves at all.
 

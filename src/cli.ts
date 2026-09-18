@@ -2,7 +2,7 @@
 import { setDefaultResultOrder } from 'node:dns'
 import { existsSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { loadConfig, assertLocal, parseDuration, type Config } from './config.js'
+import { loadDotEnv, loadConfig, assertLocal, parseDuration, type Config } from './config.js'
 import { openReadOnly, shoalDir } from './store/db.js'
 import { build } from './report/build.js'
 import { html, markdown, text } from './report/render.js'
@@ -32,7 +32,7 @@ const HELP = `shoal — a swarm of agents that use your app until it breaks
   shoal mcp                run as an MCP server on stdio
 
   --explorers N  --hammerers N  --confirmers N  --pace N
-  --for 30m|24h  --budget N  --driver name  --planner name
+  --for 30m|24h  --budget N  --jev-max-usd N  --planner name
   --no-ui  --redact  --verbose  --headed
 `
 
@@ -77,8 +77,8 @@ function toConfigFlags(f: Flags, args: string[], cmd = 'run'): Record<string, un
   }
   if (f.budget !== undefined) out.budgetPerHour = Number(f.budget)
   if (f.for !== undefined) out.forMs = parseDuration(String(f.for))
-  if (f.driver !== undefined) out.driver = { model: String(f.driver) }
-  if (f.planner !== undefined) out.planner = { model: String(f.planner) }
+  if (f['jev-max-usd'] !== undefined) out.jev = { maxUsd: Number(f['jev-max-usd']) }
+  if (f.planner !== undefined) out.planner = { provider: 'anthropic', model: String(f.planner), maxTokens: 2000 }
   if (f['no-ui']) out.ui = { enabled: false }
   if (f.redact) out.redact = true
   if (f.verbose) out.verbose = true
@@ -99,6 +99,7 @@ function logger(verbose: boolean) {
 async function main(): Promise<number> {
   const { cmd, args, flags } = parse(process.argv.slice(2))
   const dir = process.cwd()
+  loadDotEnv(dir)
 
   switch (cmd) {
     case 'help':

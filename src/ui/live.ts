@@ -6,7 +6,7 @@
  */
 export type WorkerState = {
   name: string
-  kind: 'explorer' | 'hammerer' | 'confirmer'
+  kind: 'explorer' | 'crew' | 'hammerer' | 'confirmer'
   state: 'thinking' | 'acting' | 'stuck' | 'idle'
   account: string | null
   where: string

@@ -120,3 +120,44 @@ with the machine is worth seeing.
 |---|---|---|---|
 | 58 | `better-sqlite3 ^11` | `better-sqlite3 ^13` | v11 has no prebuild for Node 26 and does not compile against that V8. v13 has prebuilds and still supports Node 20 |
 | 59 | Fixture bug #4 is a non-unique `ORDER BY` | non-unique `ORDER BY` **plus** an offset that skips a row at each page boundary | SQLite breaks ties on rowid deterministically, so the non-unique sort alone paginates perfectly and the planted bug never fires. The check being tested is unchanged |
+
+## The rebuild (2026-09-19)
+
+**The judging ban was aimed at the wrong thing.** "No model may declare a bug"
+kept LLM prose out of the report and, with it, every bug that only a screen
+shows. The ban now reads "no *generative* model": a calibrated typed
+probability from a System One model (TypeSafe Jev) may file a suspicion, and
+reproduction — a rewalk in a fresh account, judged again, every time — still
+decides. Measured before it was trusted: `src/bench/judge.ts` walks every
+planted screen bug and non-bug; 10 of 10 caught, 0 false verdicts, $0.002.
+
+**One request per step carries both halves.** Jev evaluates every question in
+a request in parallel over one state, so the choice of the next action and the
+thirty-question judgment of the last one are one round trip. The driver
+tool-calling loop, its three providers and the repair loop for weak models
+went with it; the driving heads are ported from browser-use/jev-ultrafast.
+
+**Jev never writes a string that gets typed.** It classifies the field; the
+persona picks the value class; code owns the value. The rewalk can therefore
+type the same class again and mean the same thing.
+
+**A submit the browser refused is not a dead control.** The first swarm run
+reported "Create account does nothing" on every form clicked with a required
+field empty: no request, no change, and a native validation bubble the DOM
+cannot see. Code now checks the form's own constraints before calling a
+control dead.
+
+**A list the swarm filled is not the app's words.** The semantic dev-text
+question read "🐟 Ünïcødé" and three hundred x's — the copy-paster's own
+input — as placeholder text, correctly. It is asked only on screens that do
+not show user data; the regex half runs everywhere.
+
+**The judge found a bug nobody planted.** A `<tag>` typed into a name field
+came back without it: the fixture rendered user input as HTML from its first
+commit and no HTTP check could see it, because the response body carried the
+text exactly as stored. It is bug #22 now, with its own check, and it stays.
+
+**Missions do not fade as the map fills.** They are the crew, the judged path,
+and the thing that puts data in the app; at base 70 × unexplored-share they
+never ran in eight minutes. Base 130, lean 1.
+

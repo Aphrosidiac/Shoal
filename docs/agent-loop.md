@@ -3,123 +3,87 @@
 ## One turn
 
 ```
-look   -> compact accessibility snapshot of the page
-decide -> the model picks one tool call
-act    -> we perform it
+look   -> compact snapshot: controls, forms, tables, messages, visible text
+ask    -> ONE Jev request: the judgment of the last action, and (in a mission)
+          which operation and which control come next
+judge  -> code checks, then thresholds; suspicions carry the trail
+act    -> perform it; the persona's bad habits fire around a submit
 record -> every request it caused goes to the store
 ```
 
-Repeat until the goal is met, the agent is stuck, or the turn budget runs out.
+Repeat until the goal is visibly met, the agent is stuck, or the turn budget
+runs out. `src/agent/loop.ts`.
 
-The snapshot is an accessibility tree, not a screenshot, and not raw HTML.
-Every interactive element carries a stable ref the model can point at:
+## Two modes, one loop
+
+**Explore** (the scout, and `explore` work): code picks where to go —
+depth-first over untried links, then screens nobody has opened — for free.
+Jev judges every screen it lands on and says what kind of screen it is. The
+same action on the same screen leading to the same screen is judged once per
+run.
+
+**Mission** (the crew): Jev drives. The request carries an operation head and
+one speculative target head per operation, ported from
+[browser-use/jev-ultrafast](https://github.com/browser-use/jev-ultrafast):
 
 ```
-heading "Invoices"
-button  [e3] "New invoice"
-table
-  row "INV-2081  Acme  RM 1,300  UNPAID"
-  row "INV-2082  Bolt  RM 640    PAID"
-link    [e9] "Next page"
+drive.operation      choice { CLICK, TYPE_TEXT, SELECT, WAIT, DONE, BLOCKED }
+drive.click_target   choice { e3, e9, ... }   only clickables
+drive.type_target    choice { e4, e7 }        only editables
+drive.select_target  choice { "e5:2", ... }   element and option index
+kind.e4, kind.e7     choice over fourteen field kinds
 ```
 
-## The tool surface
+Code reads only the head that matches the chosen operation. An answer that is
+not one of the offered ids, whose probabilities do not sum to one, or whose
+argmax disagrees with the choice is a refusal, never an action. Destructive
+controls — log out, delete account, change password — are not on the table,
+so they cannot be chosen.
 
-Kept small on purpose. A big tool surface makes a cheap model wander.
-
-| Tool | Notes |
-|---|---|
-| `look()` | fresh snapshot |
-| `click(ref)` | |
-| `type(ref, text)` | |
-| `select(ref, value)` | |
-| `press(key)` | Enter, Escape, Tab |
-| `goto(path)` | same origin only |
-| `back()` | |
-| `note(fact)` | writes something learned into the map |
-| `surprise(expected, observed)` | files a suspicion |
-| `done(result)` | mission over |
-
-**There is no `evaluate()`.** No arbitrary JavaScript. If an agent can reach
-into the page and change state directly, then the recording no longer matches
-what a user could actually do, and every finding becomes arguable.
-
-## The roles
-
-**Scout.** Given a URL and nothing else. Signs itself up, wanders, and fills in
-the map. Runs mostly at the start, and again whenever the app changes under us.
-Cares about breadth: new pages, new forms, new endpoints. Does not chase goals.
-
-**Crew.** Given a persona and a goal. Uses the map to move quickly through known
-ground and only thinks hard when it hits something new. Cares about depth:
-finishing a real workflow end to end.
+**There is no `type(text)`.** Jev says what kind of field it is; the persona
+says which class of value to try; `typist.ts` owns the string. There is no
+`evaluate()` either: no arbitrary JavaScript, because the recording has to
+match what a user could actually do.
 
 ## Personas
 
-Behaviour, not demographics. "Ahmad, 34, likes coffee" changes nothing about
-which code runs. These do:
+Behaviour, not demographics. Each changes which code runs:
 
-- submits the form twice because the first click felt slow
-- hits back halfway through and then goes forward again
-- opens four tabs and works in all of them
-- types a quantity of 0, then -1, then 999999
-- pastes an emoji into a name field
-- fills everything except one required field
-- leaves a form open for ten minutes, then submits it
-- refreshes right after pressing pay
-- is brand new and has no data at all
-- has been using the app for a while and has hundreds of rows
+| | Value classes | Hooks |
+|---|---|---|
+| the impatient one | | clicks a submit twice |
+| the one who changes their mind | | back, forward, type it again, submit |
+| the extremist | 0, −1, 999999 on numbers | |
+| the copy-paster | emoji, quotes, `<tag>` in text | |
+| the incomplete one | | leaves the first required field empty |
+| the one who wandered off | | waits before a submit |
+| the refresher | | reloads after a submit |
+| the beginner / the regular / the tidy one | | a fresh or a cluttered account |
 
-The last two matter more than they look. An app with three rows and an app with
-three hundred are different programs, and only one of them is normally tested.
+The `<tag>` in the copy-paster's value found bug #22 in the fixture on the
+first run — user input rendered as HTML.
 
 ## Missions
 
-Goals in plain English, generated from the map rather than written by us. When
-the scout finds a page called "Invoices" with a "New invoice" button, that is a
-mission: *create an invoice and get it paid.*
+Goals in plain English, written from the map by code (`missions.ts`). A form
+on a screen is a mission to use it; a list is a mission to open one of its
+rows. The success test is always the same shape — *the thing you made is
+shown with the values you entered* — which is what makes read-back automatic:
+the judge has `entered` to compare against on the next screen.
 
-A mission carries its own success test, which is what makes read-back automatic:
-"I should end up with an invoice showing RM 1,300 as paid." The agent then has a
-reason to look, and something concrete to be surprised by.
-
-Missions run in a fresh account by default, so they start from a clean world.
-Some are deliberately run in an old, cluttered account instead, because
-accumulated data is where a whole class of bug lives.
-
-## Surprise
-
-The one thing an agent can do that no dumb check can: remember what it did three
-steps ago and notice that the screen now disagrees.
-
-```
-surprise(
-  expected: "the invoice total should be 1,300 — I entered two lines of 650",
-  observed: "the invoice page shows 650"
-)
-```
-
-That writes a suspicion and **nothing else happens yet.** It does not go in the
-report. It does not get counted. A confirmer picks it up, replays the recorded
-requests without any model involved, and only then does it become a finding.
-
-Agents are allowed to be wrong. That is the point of the gate.
-
-## Two model tiers
-
-- **driver** — cheap and fast. Runs the turn loop. Most of the calls.
-- **planner** — good. Writes missions from the map, and looks at anything the
-  driver flagged as surprising.
-
-Roughly ninety percent of calls should hit the cheap one.
+Shallow screens first, so the thing an invoice depends on is made before the
+invoice. Missions run in a fresh account by default; some deliberately in a
+cluttered one.
 
 ## What we do not do
 
-**No LLM in the checks.** Ever. Nothing in `watch/` may call a model.
+**No model in the checks.** Nothing in `watch/` calls anything.
 
-**No LLM in the replay.** A repro that needs a model to reproduce is not a
-repro.
+**No model in an HTTP replay.** A repro that needs a model to reproduce is
+not a repro. (A screen repro asks the *same question* of the *same screen*
+again — that is a measurement repeated, not a judgment invented.)
 
-**No agent memory across missions**, beyond the map. The map is shared, durable
-and structured. Agent conversation history is not: it is expensive, it drifts,
-and it makes runs impossible to reason about.
+**No agent memory across missions**, beyond the map and the trail. Agent
+conversation history is not kept: it is expensive, it drifts, and it makes
+runs impossible to reason about. The judge sees the last ten actions as one
+line each, and in explore mode none at all.

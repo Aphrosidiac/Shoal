@@ -21,8 +21,14 @@ export type Case = {
   detail: string
   endpointId: number | null
   attempts?: number
+  /** Every attempt must reproduce. For a judgment, one hit in two is a coin toss, not a bug. */
+  requireAll?: boolean
   fingerprint: string
+  /** For a screen finding: the URL pattern it was seen on. Endpoint findings leave it out. */
+  screen?: string
   attempt: (n: number) => Promise<Attempt>
+  /** Called when no attempt could run at all — "could not test" is not "did not reproduce". */
+  onUntestable?: (why: string) => void
 }
 
 /**
@@ -69,9 +75,14 @@ export async function decide(ctx: Ctx, c: Case): Promise<findings.Finding | null
   coverage.bump(ctx.db, 'confirmed_attempts')
   if (!ran) {
     ctx.log('confirm', `could not test ${c.check} on ${c.title}: ${lastWhy || 'no usable attempt'}`)
+    c.onUntestable?.(lastWhy || 'no usable attempt')
     return null
   }
   if (!reproduced || !best) return null
+  if (c.requireAll && reproduced < ran) {
+    ctx.log('confirm', `${c.check} on ${c.title}: reproduced ${reproduced} of ${ran}, and a judgment has to hold every time`)
+    return null
+  }
 
   const detail =
     (best.detail ? best.detail + '\n\n' : '') +
@@ -85,7 +96,7 @@ export async function decide(ctx: Ctx, c: Case): Promise<findings.Finding | null
     reach: best.steps.length,
     endpoint_id: c.endpointId,
     app_version_id: ctx.app.versionId || 1,
-    repro: { check: c.check, steps: best.steps, shrunkFrom: best.steps.length, detail },
+    repro: { check: c.check, steps: best.steps, shrunkFrom: best.steps.length, detail, ...(c.screen ? { screen: c.screen } : {}) },
     attempts: ran,
     reproduced,
     recording_ids: [...new Set(recordingIds)].slice(0, 8),

@@ -16,6 +16,8 @@ import { AuthStore } from './signup/auth.js'
 import { Meter } from './budget/meter.js'
 import { Vault } from './signup/vault.js'
 import { buildModels } from './model/index.js'
+import { Jev } from './jev/client.js'
+import { jevConfig } from './jev/setup.js'
 import { Throttle } from './budget/throttle.js'
 import { scout } from './agent/scout.js'
 import { RunMemory } from './agent/loop.js'
@@ -54,15 +56,7 @@ export async function boot(cfg: Config, log: (kind: string, message: string) => 
   if (!mailUp) log('mail', `port ${cfg.mailPort} is busy; email verification will be skipped`)
 
   const models = await buildModels(db, cfg)
-  // A local model's first call pays for loading six gigabytes off disk. Do it
-  // now, while nothing is waiting on it, rather than inside the first turn.
-  if (cfg.driver.provider === 'openai-compatible') {
-    const t0 = Date.now()
-    await models.driver
-      .call({ system: 'Answer with the tool.', messages: [{ role: 'user', content: 'Say ok.' }], tools: [], maxTokens: 8 })
-      .then(() => log('model', `driver warm in ${Math.round((Date.now() - t0) / 1000)}s`))
-      .catch((e: Error) => log('model', `driver did not answer: ${e.message.split('\n')[0]}`))
-  }
+  const jev = new Jev(jevConfig(cfg), db, log)
   const throttle = new Throttle(cfg.pace)
   const pool = new BrowserPool(cfg.headless)
 
@@ -75,6 +69,7 @@ export async function boot(cfg: Config, log: (kind: string, message: string) => 
     patterns,
     app,
     models,
+    jev,
     throttle,
     mail: mailUp ? mail : null,
     auth: new AuthStore(),

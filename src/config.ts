@@ -22,18 +22,33 @@ export type TierConfig = {
   extra?: Record<string, unknown>
 }
 
+export type JevConfig = {
+  /** Read from TYPESAFE_API_KEY when not set here. */
+  apiKey: string | null
+  model: string
+  baseUrl: string
+  /** Hard dollar cap for the whole run directory. Null means none. */
+  maxUsd: number | null
+  timeoutMs: number
+  /** A Noul at or above this files a suspicion; a rewalk must reach it again to confirm. */
+  suspect: number
+}
+
 export type Config = {
   url: string
   dir: string
   explorers: number
   hammerers: number
   confirmers: number
+  /** How many fresh-account walks a screen suspicion must survive to become a finding. */
+  rewalks: number
   pace: number
   mailPort: number
   slowMs: number
   ui: { port: number; enabled: boolean }
-  driver: TierConfig
-  planner: TierConfig
+  jev: JevConfig
+  /** Optional. A generative model for writing missions; code writes them without one. */
+  planner: TierConfig | null
   plannerCallsPerHour: number
   budgetPerHour: number | null
   forMs: number | null
@@ -49,12 +64,13 @@ const DEFAULTS: Config = {
   explorers: 3,
   hammerers: 16,
   confirmers: 2,
+  rewalks: 2,
   pace: 40,
   mailPort: 1025,
   slowMs: 1500,
   ui: { port: 7717, enabled: true },
-  driver: { provider: 'anthropic', model: 'claude-haiku-4-5', maxTokens: 700 },
-  planner: { provider: 'anthropic', model: 'claude-opus-5', maxTokens: 2000 },
+  jev: { apiKey: null, model: 'jev-latest', baseUrl: 'https://api.typesafe.ai', maxUsd: null, timeoutMs: 20_000, suspect: 0.85 },
+  planner: null,
   plannerCallsPerHour: 20,
   budgetPerHour: null,
   forMs: null,
@@ -122,18 +138,19 @@ function fromEnv(): Record<string, unknown> {
     plannerCallsPerHour: num(e.SHOAL_PLANNER_CALLS_PER_HOUR),
     budgetPerHour: num(e.SHOAL_BUDGET_PER_HOUR),
     ui: { port: num(e.SHOAL_UI_PORT) },
-    driver: {
-      provider: e.SHOAL_DRIVER_PROVIDER,
-      model: e.SHOAL_DRIVER_MODEL,
-      baseUrl: e.SHOAL_DRIVER_BASE_URL,
-      apiKey: e.SHOAL_DRIVER_API_KEY,
+    jev: {
+      apiKey: e.TYPESAFE_API_KEY,
+      model: e.SHOAL_JEV_MODEL,
+      maxUsd: num(e.SHOAL_JEV_MAX_USD),
     },
-    planner: {
-      provider: e.SHOAL_PLANNER_PROVIDER,
-      model: e.SHOAL_PLANNER_MODEL,
-      baseUrl: e.SHOAL_PLANNER_BASE_URL,
-      apiKey: e.SHOAL_PLANNER_API_KEY,
-    },
+    planner: e.SHOAL_PLANNER_PROVIDER
+      ? {
+          provider: e.SHOAL_PLANNER_PROVIDER,
+          model: e.SHOAL_PLANNER_MODEL,
+          baseUrl: e.SHOAL_PLANNER_BASE_URL,
+          apiKey: e.SHOAL_PLANNER_API_KEY,
+        }
+      : undefined,
   }
   return prune(out)
 }
@@ -169,5 +186,25 @@ export function loadConfig(flags: Record<string, unknown> = {}, dir = process.cw
     if (!Number.isFinite(cfg[k]) || cfg[k] < 0) throw new Error(`${k} must be a number of 0 or more`)
   }
   if (cfg.pace <= 0) throw new Error('pace must be greater than zero')
+  if (cfg.planner && !cfg.planner.maxTokens) cfg.planner.maxTokens = 2000
   return cfg
+}
+
+/** Node 20.12+ can read .env itself. Earlier ones just skip it. */
+export function loadDotEnv(dir = process.cwd()): void {
+  const f = resolve(dir, '.env')
+  if (!existsSync(f)) return
+  const load = (process as unknown as { loadEnvFile?: (p: string) => void }).loadEnvFile
+  if (load) {
+    try {
+      load.call(process, f)
+    } catch {
+      /* a malformed .env is the user's to fix; the run still starts */
+    }
+    return
+  }
+  for (const line of readFileSync(f, 'utf8').split('\n')) {
+    const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/.exec(line)
+    if (m && process.env[m[1]!] === undefined) process.env[m[1]!] = m[2]!.replace(/^["']|["']$/g, '')
+  }
 }

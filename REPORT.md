@@ -1,7 +1,25 @@
 # What was built, and what it does not do
 
-Written at the end of the build, against the gates it was given. Numbers here
-are from real runs whose full output is in
+> **2026-09-19 — superseded in part by the rebuild.** The report below
+> describes the first Shoal: an HTTP fuzzer that used a browser to bootstrap,
+> and could not see a single bug on a screen. The rebuild puts TypeSafe Jev
+> — a decision model, not an LLM — on every step and every screen, adds ten
+> planted screen bugs to the fixture, and confirms a screen suspicion by
+> walking it again in a fresh account. Measured on the day: the judge alone
+> catches 10 of 10 planted screen bugs with 0 false verdicts on the non-bugs
+> for $0.002; three ten-minute swarm runs went 9 → 11 → 14 of 22 with the
+> false positives going 6 → 0 → 0, each fix a code gate rather than a
+> judgment, and one bug found that nobody planted (#22). Ten minutes at
+> $0.06. Everything it does and does not do is in
+> [docs/ai.md](docs/ai.md), [docs/finding-bugs.md](docs/finding-bugs.md) and
+> the tail of [docs/decisions.md](docs/decisions.md). What is still unmet:
+> the day-long run, still; missions that need a chain (make an order, open
+> its invoice, set its status) reach the end only when the persona rotation
+> and the ten minutes allow, so #13, #15, #16 and #21 are caught by the judge
+> on a scripted walk and not yet by the swarm on a short one.
+
+Written at the end of the first build, against the gates it was given. Numbers
+here are from real runs whose full output is in
 [fixtures/leaky/BENCH.md](fixtures/leaky/BENCH.md), not from reading the code.
 
 ---

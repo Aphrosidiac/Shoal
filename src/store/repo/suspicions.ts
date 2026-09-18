@@ -39,3 +39,11 @@ export const counts = (db: DB): Record<string, number> => {
   for (const r of rows) out[r.state] = r.c
   return out
 }
+
+/** Already filed on this fingerprint, in any state. Never report the same thing twice — rule six. */
+export const anyByFp = (db: DB, fp: string): Suspicion | undefined =>
+  db.prepare("SELECT * FROM suspicions WHERE note LIKE ? ORDER BY id DESC LIMIT 1").get(`%"fp":"${fp}"%`) as Suspicion | undefined
+
+export const setNote = (db: DB, id: number, note: Record<string, unknown>): void => {
+  db.prepare('UPDATE suspicions SET note = ? WHERE id = ?').run(JSON.stringify(note), id)
+}

@@ -62,30 +62,25 @@ export class ModelDown extends Error {
 }
 
 /**
- * Both tiers, plus the bookkeeping every call goes through. Nothing else in
- * Shoal talks to a provider directly.
+ * The optional generative tier, plus the bookkeeping every call goes through.
+ * Driving and judging are Jev's (jev/client.ts); a generative model is only
+ * ever asked to write missions, and only if one is configured.
  */
 export class Models {
-  driver: Model
-  planner: Model
+  planner: Model | null
   private db: DB
   private cfg: Config
   /** Set when a provider is refusing us, so workers can degrade to free work. */
-  driverDownUntil = 0
   plannerDownUntil = 0
 
-  constructor(db: DB, cfg: Config, driver: Model, planner: Model) {
+  constructor(db: DB, cfg: Config, planner: Model | null) {
     this.db = db
     this.cfg = cfg
-    this.driver = driver
     this.planner = planner
   }
 
-  driverUp(): boolean {
-    return Date.now() >= this.driverDownUntil
-  }
   plannerUp(): boolean {
-    return Date.now() >= this.plannerDownUntil
+    return this.planner !== null && Date.now() >= this.plannerDownUntil
   }
 
   /** Planner calls are capped per hour, which is what a subscription meters. */
@@ -94,8 +89,9 @@ export class Models {
     return Math.max(0, this.cfg.plannerCallsPerHour - used)
   }
 
-  async run(tier: 'driver' | 'planner', worker: string, req: CallReq): Promise<CallRes> {
-    const model = tier === 'driver' ? this.driver : this.planner
+  async run(tier: 'planner', worker: string, req: CallReq): Promise<CallRes> {
+    const model = this.planner
+    if (!model) throw new ModelDown('no planner is configured')
     const t0 = Date.now()
     try {
       const res = await model.call(req)
@@ -115,23 +111,20 @@ export class Models {
         usd: priceOf(model.id, res.usage),
         prompt: this.cfg.keepPrompts ? JSON.stringify({ system: req.system, messages: req.messages }).slice(0, 20_000) : null,
       })
-      if (tier === 'driver') this.driverDownUntil = 0
-      else this.plannerDownUntil = 0
+      this.plannerDownUntil = 0
       return res
     } catch (e) {
       const err = e as ModelDown
       const backoff = err.retryAfterMs ?? 30_000
-      if (tier === 'driver') this.driverDownUntil = Date.now() + backoff
-      else this.plannerDownUntil = Date.now() + backoff
+      this.plannerDownUntil = Date.now() + backoff
       throw e
     }
   }
 }
 
 export async function buildModels(db: DB, cfg: Config): Promise<Models> {
-  const driver = await makeModel(cfg.driver, 'driver')
-  const planner = await makeModel(cfg.planner, 'planner')
-  return new Models(db, cfg, driver, planner)
+  const planner = cfg.planner ? await makeModel(cfg.planner, 'planner') : null
+  return new Models(db, cfg, planner)
 }
 
 export async function makeModel(tier: TierConfig, which: 'driver' | 'planner'): Promise<Model> {

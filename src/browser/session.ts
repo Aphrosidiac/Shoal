@@ -9,6 +9,7 @@ import { formName } from '../map/normalise.js'
 import { render, snapshot, type Snapshot } from './snapshot.js'
 import * as act from './act.js'
 import type { BrowserPool } from './pool.js'
+import type { Step } from '../agent/trail.js'
 
 /**
  * A context, an account and a recorder. An agent's hands, and the only way
@@ -21,6 +22,8 @@ export class Session {
   account: Account | null = null
   last: Snapshot | null = null
   pageId: number | null = null
+  /** Every step this account has taken, in rewalkable form. Starts over with a new account. */
+  trail: Step[] = []
 
   constructor(private ctx: Ctx, private pool: BrowserPool, readonly worker: string) {}
 
@@ -41,6 +44,7 @@ export class Session {
   }
 
   use(account: Account | null): void {
+    if (account?.id !== this.account?.id) this.trail = []
     this.account = account
     this.recorder.accountId = account?.id ?? null
     if (account) this.recorder.claim(account.id)
@@ -123,23 +127,52 @@ export class Session {
     return r
   }
 
+  /** A control's position among the controls that share its role and name: the third "Open" link. */
+  private nth(ref: string): { role: string; name: string; nth: number } {
+    const c = this.last!.controls.find((x) => x.ref === ref)
+    if (!c) return { role: '?', name: ref, nth: 0 }
+    const same = this.last!.controls.filter((x) => x.role === c.role && x.name === c.name)
+    return { role: c.role, name: c.name, nth: Math.max(0, same.indexOf(c)) }
+  }
+
+  private step(s: Step): void {
+    this.trail.push(s)
+    if (this.trail.length > 400) this.trail.shift()
+  }
+
   click(ref: string): Promise<act.ActResult> {
+    this.step({ op: 'click', url: this.last!.path, ...this.nth(ref) })
     return this.withEdge(() => act.click(this.page, this.last!, ref))
   }
   type(ref: string, text: string): Promise<act.ActResult> {
+    this.step({ op: 'type', url: this.last!.path, ...this.nth(ref), text })
     return act.type(this.page, this.last!, ref, text)
   }
   select(ref: string, value: string): Promise<act.ActResult> {
+    this.step({ op: 'select', url: this.last!.path, ...this.nth(ref), value })
     return this.withEdge(() => act.select(this.page, this.last!, ref, value))
   }
   press(key: string): Promise<act.ActResult> {
+    this.step({ op: 'press', url: this.last?.path ?? '/', key })
     return this.withEdge(() => act.press(this.page, key))
   }
   goto(path: string): Promise<act.ActResult> {
+    this.step({ op: 'goto', url: this.last?.path ?? '/', path })
     return this.withEdge(() => act.goto(this.page, this.ctx.base, path))
   }
   back(): Promise<act.ActResult> {
+    this.step({ op: 'back', url: this.last?.path ?? '/' })
     return this.withEdge(() => act.back(this.page))
+  }
+  /** The refresher persona. Not a step a rewalk repeats: reloading is idempotent by definition. */
+  async reload(): Promise<act.ActResult> {
+    try {
+      await this.page.reload({ waitUntil: 'domcontentloaded', timeout: 8000 })
+    } catch (e) {
+      return { ok: false, note: `could not reload: ${(e as Error).message.split('\n')[0]}` }
+    }
+    await this.look()
+    return { ok: true, note: 'reloaded the page' }
   }
 
   /** The cookies replay needs to speak as this account. */

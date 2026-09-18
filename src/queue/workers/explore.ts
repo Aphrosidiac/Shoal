@@ -3,7 +3,6 @@ import type { Session } from '../../browser/session.js'
 import type { ExplorePayload } from '../kinds.js'
 import { runLoop, type RunMemory } from '../../agent/loop.js'
 import { namesAnObject, reach } from '../../browser/reach.js'
-import { SCOUT } from '../../agent/prompts/index.js'
 import * as map from '../../store/repo/map.js'
 
 /** Look at a screen never seen, and write down what it is for. */
@@ -21,7 +20,7 @@ export async function runExplore(ctx: Ctx, s: Session, p: ExplorePayload, memory
   }
 
   const out = await runLoop(ctx, s, {
-    system: SCOUT,
+    mode: 'explore',
     goal: `You are looking around this app. ${p.why}`,
     worker: s.worker,
     maxTurns: 12,

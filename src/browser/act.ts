@@ -5,8 +5,17 @@ export type ActResult = { ok: boolean; note: string }
 
 const SETTLE = 1200
 
-/** Waits for the app to stop talking, but never for very long. */
-async function settle(page: Page): Promise<void> {
+/**
+ * Waits for the app to stop talking, but never for very long.
+ *
+ * The short sleep first is load-bearing. A click handler that does
+ * `await fetch()` has not started its request by the time the click
+ * returns, so "network idle" is true at that instant and a snapshot taken
+ * then is the screen from before the click. The judge then reports every
+ * form submit in the app as a control that does nothing.
+ */
+export async function settle(page: Page): Promise<void> {
+  await page.waitForTimeout(150)
   try {
     await page.waitForLoadState('networkidle', { timeout: SETTLE })
   } catch {

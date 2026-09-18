@@ -221,7 +221,7 @@ export class Scheduler {
     }
     try {
     while (!this.ctx.stopping()) {
-      if (pool.needsModel && (!this.ctx.models.driverUp() || !this.ctx.meter.canAfford())) {
+      if (pool.needsModel && (!this.ctx.jev.up() || this.ctx.jev.budgetLeft() <= 0 || !this.ctx.meter.canAfford())) {
         await sleep(5000)
         continue
       }

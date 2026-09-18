@@ -71,15 +71,35 @@ Three shapes are worth generating on purpose:
   agent closes a date while another books onto it. Repeating a single action
   can never produce this.
 
-## The agent's own memory
+## The screen contract
 
-The one class only an agent can notice, because it needs to remember what it
-did three steps ago and care that the screen now contradicts it.
+The class the first design could not reach, and the reason for the rebuild.
+After every action, one request to Jev carries the screen before, the action,
+the screen after, the values entered, and thirty narrow questions — each a
+calibrated probability, each written with its boundary case
+(`src/jev/bank.ts`). Code goes first with everything that is a comparison,
+and the composites use both:
 
-"I set the quantity to 12 and the confirmation page says 1."
+| Check | Code decides | Jev decides |
+|---|---|---|
+| `screen.dead_control` | nothing changed, nothing was sent, the browser did not refuse the form itself | a user expected this control to do something |
+| `screen.false_success` | a request behind the action failed | the screen confirms success |
+| `screen.dropped_value` | the value typed is not on the screen | a value for that field is shown |
+| `screen.stale_after_write` | a write succeeded, the row count did not move, the value is not there | this is a list, and it says saved |
+| `screen.lost_input` | every entered field is now different | an error is shown |
+| `screen.duplicate` | one submit, two new rows | — |
+| `screen.logged_out` | a password field appeared on an ordinary click while signed in | — |
+| `screen.html_injection` | a `<tag>` typed in came back without it | — |
+| `screen.dev_text` | `undefined`, `NaN`, `{{…}}`, a stack frame | placeholder text a regex cannot name, on screens that show the app's own words |
+| `screen.contradiction` | — | two facts about one record that cannot both be true |
+| `screen.wrong_destination` | — | the label promised one thing, the heading says another |
+| `screen.wrong_validation` | — | the message names a field the form does not have, or blames one that was right |
+| `screen.dead_end` | there is no link at all | — |
+| `screen.loading_stuck` | "Loading…" is on screen after the network went quiet | it is the main content |
 
-These come out as suspicions in plain English, and go through the same
-confirmation gate as everything else.
+A suspicion carries the trail — the last twelve steps, as role and name, never
+a selector — and a confirmer walks it again in a fresh account and judges the
+same screen again. Two walks, both must agree.
 
 ## Suspicion, then confirmation
 

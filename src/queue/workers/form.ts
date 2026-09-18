@@ -7,6 +7,9 @@ import { valueFor, type ValueClass } from '../../map/values.js'
 import type { Snapshot } from '../../browser/snapshot.js'
 import { namesAnObject, reach } from '../../browser/reach.js'
 import { formName } from '../../map/normalise.js'
+import { observe } from '../../agent/observe.js'
+import * as recordings from '../../store/repo/recordings.js'
+import { JevDown, BudgetExhausted } from '../../jev/client.js'
 
 /**
  * Fill a form with one class of value that has not been tried, and submit it.
@@ -31,20 +34,28 @@ export async function runForm(ctx: Ctx, s: Session, p: FormPayload): Promise<str
   if (!shape) return `no form on ${p.path} any more`
 
   // everything else gets a plausible value; the one under test gets the class
+  const entered: Record<string, string> = {}
+  const classes: string[] = []
   for (const f of shape.fields) {
     const control = snap.controls.find((c) => c.ref === f.ref)
     if (!control || control.disabled) continue
     const cls: ValueClass = f.name === target.name ? (p.valueClass as ValueClass) : 'normal'
     if (control.role === 'combobox') {
       const opt = control.options.find((o) => o && !/^(choose|select|--)/i.test(o))
-      if (opt) await s.select(control.ref, opt)
+      if (opt) {
+        await s.select(control.ref, opt)
+        entered[control.name || f.name] = opt
+      }
       continue
     }
     if (control.role === 'checkbox') {
       if (cls === 'normal') await s.click(control.ref)
       continue
     }
-    await s.type(control.ref, valueFor(f.type, cls, f.name))
+    const text = valueFor(f.type, cls, f.name)
+    await s.type(control.ref, text)
+    if (text) entered[control.name || f.name] = text
+    classes.push(cls)
   }
 
   snap = await s.look()
@@ -54,11 +65,30 @@ export async function runForm(ctx: Ctx, s: Session, p: FormPayload): Promise<str
     : snap.controls.find((c) => c.role === 'button' && /save|create|submit|send|add|record|book|run/i.test(c.name))
   if (!submit) return 'the form has no submit button'
 
+  const watermark = recordings.lastId(ctx.db)
+  const before = snap
   await s.click(submit.ref)
   map.markTried(ctx.db, p.fieldId, p.valueClass)
   coverage.bump(ctx.db, 'actions')
   coverage.bump(ctx.db, 'fields_poked')
-  return `submitted ${form.name ?? p.path} with ${target.name}=${p.valueClass}`
+
+  // What did the screen make of it? A value class is the persona's bad habit
+  // without the persona, and the contract reads the result the same way.
+  let judged = ''
+  try {
+    const j = await observe(ctx, s, {
+      goal: `submit the form on ${p.path} with ${target.name} set to a ${p.valueClass} value`,
+      action: { op: 'click', target: { role: submit.role, name: submit.name }, url_before: before.path },
+      before,
+      entered,
+      watermark,
+      valueClasses: classes,
+    })
+    if (j.filed.length) judged = `, ${j.filed.length} suspicion${j.filed.length === 1 ? '' : 's'}`
+  } catch (e) {
+    if (!(e instanceof JevDown) && !(e instanceof BudgetExhausted)) ctx.log('jev', `${s.worker}: ${(e as Error).message.split('\n')[0]}`)
+  }
+  return `submitted ${form.name ?? p.path} with ${target.name}=${p.valueClass}${judged}`
 }
 
 /**

@@ -46,9 +46,13 @@ src/
     reach.ts             get to a screen that names an object, via its list
     record.ts            network interception -> recordings table
 
-  model/                 where the intelligence comes from
+  jev/                   the judge and the driver: TypeSafe Jev
+    client.ts            one request, typed questions, validated answers, spend, cache, budget
+    bank.ts              the screen contract — every question, with its boundary case
+    setup.ts             the key, from .env or config
+  model/                 the OPTIONAL generative tier (missions only)
     index.ts             the Model interface. one function, three adapters
-    anthropic.ts         official SDK. strict tools, prompt caching
+    anthropic.ts         official SDK
     openai-compat.ts     OpenRouter, Ollama, LM Studio, vLLM
     claude-code.ts       Agent SDK query(), CLI subprocess as fallback
     repair.ts            schema validation + two-attempt repair for weak models
@@ -58,15 +62,19 @@ src/
     tools.ts             start, status, findings, finding, map, recheck, stop
     channel.ts           pushes confirmed findings into a live session
 
-  agent/                 the LLM part
-    loop.ts              look -> decide -> act -> record, until done or stuck
-    tools.ts             the small tool surface the model is given
-    prompts/             system prompts, one per role
-    scout.ts             the explorer
-    crew.ts              the mission runner
-    personas.ts          behaviours, not demographics
-    missions.ts          goals, generated from the map
-    surprise.ts          filing a suspicion
+  agent/                 the browser part
+    loop.ts              look -> ask -> judge -> act, until done or stuck
+    choose.ts            one Jev request per step: driving heads + the contract
+    judge.ts             code checks first, thresholds second; files suspicions with a trail
+    screen.ts            snapshot -> what Jev sees (pruned before, full after, element table)
+    typist.ts            field kind + value class -> the string. Jev never writes one
+    trail.ts             steps as role and name, rewalkable
+    observe.ts           judge one transition outside the loop (the form worker)
+    prompts/             the planner prompt, if a planner is configured
+    scout.ts             the explorer: code walks untried links, Jev judges each screen
+    crew.ts              the mission runner: Jev drives, persona misbehaves, judge reads
+    personas.ts          behaviours, not demographics: value classes and hooks
+    missions.ts          goals, written from the map by code
 
   map/                   the model of the app, built from outside
     normalise.ts         /invoices/8123 -> /invoices/:id
@@ -108,6 +116,7 @@ src/
   # so the "not confirmed" section stays about genuine near-misses.
 
   replay/
+    rewalk.ts            walk a screen suspicion's trail again in a fresh account, judge again
     request.ts           re-fire one recording, with a live session per account
     probes.ts            how each check reproduces itself: faults, read-back,
                          paging walks, idempotency, consistency, leaks, role gaps
@@ -136,8 +145,11 @@ src/
 **Only `store/` touches SQLite.** Everything else goes through a repo. This is
 what keeps a 24-hour run debuggable.
 
-**Nothing in `watch/` may call a model.** If a check needs judgment, it is not
-a check — it belongs in `agent/` and it produces a suspicion instead.
+**Nothing in `watch/` or `replay/request.ts` may call a model.** If a check
+needs judgment it belongs in `agent/judge.ts`, where it produces a suspicion
+that `replay/rewalk.ts` must walk again before it is anything. Only
+`jev/client.ts` talks to TypeSafe; nothing generative is on the path of a
+judgment.
 
 **Nothing in `agent/` may write to `findings`.** Agents write suspicions. Only
 `replay/verdict.ts` promotes a suspicion to a finding.

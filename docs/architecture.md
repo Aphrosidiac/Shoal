@@ -4,7 +4,17 @@ The overview. The detail lives in [modules.md](modules.md),
 [schema.md](schema.md), [scheduler.md](scheduler.md),
 [agent-loop.md](agent-loop.md) and [recording.md](recording.md).
 
-## The trick that makes it work
+## Two tricks that make it work
+
+The second one is the rebuild. The browser was the expensive part, so the
+first design minimised it: learn once, replay over HTTP forever. With Jev at
+~300 ms and a hundredth of a cent a step, the browser is the cheap part, and
+every screen the swarm sees is judged against a contract of what a screen may
+not do — see [finding-bugs.md](finding-bugs.md), "The screen contract". A
+screen suspicion is confirmed by walking the same steps again in a fresh
+account (`replay/rewalk.ts`), not by replaying a request.
+
+## The first trick
 
 An agent driving a browser takes around three seconds per click. That is fine
 for working out how an app behaves. It is useless for hammering it, and races

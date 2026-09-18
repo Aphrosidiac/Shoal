@@ -34,8 +34,8 @@ export function state(db: DB, cfg: Config, appUrl: string, build_: string): Reco
       uptimeMs: Date.now() - (run?.started_at ?? Date.now()),
       build: build_,
       running: Date.now() - (run?.last_seen_at ?? 0) < 30_000,
-      driver: shortModel(ran.driver.provider, ran.driver.model),
-      planner: shortModel(ran.planner.provider, ran.planner.model),
+      driver: `typesafe / ${ran.jev?.model ?? 'jev-latest'}`,
+      planner: ran.planner ? shortModel(ran.planner.provider, ran.planner.model) : 'code',
       config: { explorers: ran.explorers, hammerers: ran.hammerers, confirmers: ran.confirmers },
     },
     counters: {

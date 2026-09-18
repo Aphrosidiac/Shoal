@@ -2,7 +2,7 @@
 
 ## The problem this solves
 
-You change the scoring weights. You swap the driver to a local model. You
+You change the scoring weights. You reword a question in the bank. You
 rewrite the exploration prompt. The next run finds six bugs instead of nine.
 
 Did it get worse, or did the app just have fewer bugs that day?
@@ -23,8 +23,14 @@ one of these tools is pointed at.
 
 ## The planted bugs
 
-Eleven, one per class of check, written down in `fixtures/leaky/BUGS.md` and
-never referred to by Shoal.
+Twenty-two — eleven behind the API, ten on the screen, and one nobody
+planted — written down in `fixtures/leaky/BUGS.md` and never referred to by
+Shoal. The screen ten (U1–U10) are visible only through the browser: a Save
+wired to nothing, "Done." on a 404, a list that is not refreshed, a status
+line that contradicts the balance beside it, a form wiped on error, a link to
+the wrong screen, a `{{template}}`, a validation message about a field the
+form does not have, a report that never loads, a download that logs you out.
+The API eleven:
 
 | # | Bug | Should be caught by |
 |---|---|---|
@@ -56,6 +62,9 @@ The fixture also contains behaviour that **looks** wrong and is not:
 - an endpoint that correctly returns 400 for bad input
 - a list that is correctly paged with a stable key
 - two accounts that correctly cannot see each other
+- a green "Saved.", a hint under a field, an empty state that says what to
+  do, a disabled control with its reason, reference codes and emails on
+  screen, no "Previous" on page one
 
 If Shoal reports any of those, that is a false positive, and a tool that cries
 wolf is worse than no tool. Recall alone is a vanity metric.
@@ -92,9 +101,9 @@ improvement.
 ## When it runs
 
 - before and after any change to the scheduler, the prompts, or a check
-- as the **M1 local-model gate** — the same bench against Claude and against
-  Ollama, and the gap between the two scores is the honest answer to whether a
-  local driver works
+- `npx tsx src/bench/judge.ts` measures the judge on its own, without the
+  swarm: every planted screen bug and non-bug, one scripted walk, about a
+  cent. Run it after any change to `jev/bank.ts` or `agent/judge.ts`.
 - on every release
 
 Results are appended to `fixtures/leaky/BENCH.md`, so the history of the
