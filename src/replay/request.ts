@@ -52,6 +52,13 @@ export class Replayer {
     if (r.accountId != null) {
       const cookie = await this.cookieFor(r.accountId)
       if (cookie) headers.cookie = cookie
+      // An app that keeps its session in a bearer token has nothing in the
+      // cookie jar. The browser sent the token on every call it made, and
+      // the recorder kept it, so a replay as that account carries it too.
+      if (!headers.authorization) {
+        const token = this.tokenFor(r.accountId)
+        if (token) headers.authorization = token
+      }
     }
     if (r.body && !headers['content-type']) headers['content-type'] = 'application/json'
 
@@ -123,7 +130,22 @@ export class Replayer {
   /** Forgets an account's session, so the next call logs in again. */
   invalidate(accountId: number): void {
     this.jars.delete(accountId)
+    this.tokens.delete(accountId)
     this.ctx.auth.forget(accountId)
+  }
+
+  private tokens = new Map<number, string>()
+  private tokenFor(accountId: number): string | null {
+    const held = this.tokens.get(accountId)
+    if (held) return held
+    const row = this.ctx.db
+      .prepare("SELECT req_headers FROM recordings WHERE account_id = ? AND req_headers LIKE '%\"authorization\"%' ORDER BY id DESC LIMIT 1")
+      .get(accountId) as { req_headers: string } | undefined
+    if (!row) return null
+    const h = safeHeaders(row.req_headers)
+    if (!h.authorization) return null
+    this.tokens.set(accountId, h.authorization)
+    return h.authorization
   }
 
   private async cookieFor(accountId: number): Promise<string | null> {

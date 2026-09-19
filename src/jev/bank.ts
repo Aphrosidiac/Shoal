@@ -15,7 +15,7 @@ export const SUSPECT = 0.85
 /** What the judge is told about the step it is judging. */
 export type StepState = {
   goal: string
-  action: { op: string; target?: { role: string; name: string }; text?: string; url_before: string }
+  action: { op: string; target?: { role: string; name: string; href?: string }; text?: string; url_before: string; failed?: boolean }
   before: ScreenState
   after: ScreenState
   entered: Record<string, string>

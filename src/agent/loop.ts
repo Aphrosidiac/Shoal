@@ -358,7 +358,7 @@ async function exploreStep(
     out.fastActions++
     coverage.bump(ctx.db, 'actions')
     return {
-      pending: { action: { op: 'click', target: { role: c.role, name: c.name }, url_before: snap.path }, before: snap, watermark, described: r.note },
+      pending: { action: { op: 'click', target: { role: c.role, name: c.name, ...(c.href ? { href: c.href } : {}) }, url_before: snap.path, ...(r.ok ? {} : { failed: true }) }, before: snap, watermark, described: r.note },
       did: r.note,
     }
   }
@@ -389,7 +389,7 @@ async function missionAct(
   st: ActState
 ): Promise<{ action: StepState['action']; note: string; classIdx: number; skippedRequired: string | null; wentBack: boolean }> {
   const c = d.target!
-  const target = { role: c.role, name: c.name }
+  const target = { role: c.role, name: c.name, ...(c.href ? { href: c.href } : {}) }
   let classIdx = st.classIdx
   let skippedRequired = st.skippedRequired
   let wentBack = st.wentBack
@@ -443,6 +443,7 @@ async function missionAct(
   }
   const r = await s.click(c.ref)
   let note = r.note
+  if (!r.ok) return { action: { op: 'click', target, url_before: snap.path, failed: true }, note, classIdx, skippedRequired, wentBack }
   if (r.ok && submitLike && st.hooks.doubleSubmit) {
     // The impatient one. The second click goes to the same control if it is
     // still there; if the app already navigated, there is nothing to double.

@@ -81,7 +81,7 @@ export async function serve(cfg: Config, get: () => Record<string, unknown>): Pr
   // The front door. `shoal ui` in a directory, paste a URL, press the green
   // button: this spawns `shoal run` detached, writing to .shoal/run.log, with
   // the dashboard it would have opened turned off because this one is it.
-  app.post<{ Body: { url?: string; forMs?: number; maxUsd?: number; explorers?: number } }>('/api/start', async (req, reply) => {
+  app.post<{ Body: { url?: string; forMs?: number; maxUsd?: number; explorers?: number; login?: { email?: string; password?: string } } }>('/api/start', async (req, reply) => {
     const b = req.body ?? {}
     const url = String(b.url ?? cfg.url ?? '')
     try {
@@ -104,7 +104,13 @@ export async function serve(cfg: Config, get: () => Record<string, unknown>): Pr
     if (b.forMs) args.push('--for', `${Math.round(Number(b.forMs) / 60000)}m`)
     if (b.maxUsd !== undefined && b.maxUsd !== null) args.push('--jev-max-usd', String(b.maxUsd))
     if (b.explorers) args.push('--explorers', String(b.explorers))
-    const child = spawn(process.execPath, args, { cwd: cfg.dir, detached: true, stdio: ['ignore', out, out], env: process.env })
+    // A given sign-in travels in the environment, never on the command line
+    // where `ps` would show it. The run stores it in .shoal/run.db like every
+    // account it makes itself.
+    const env: NodeJS.ProcessEnv = { ...process.env }
+    const login = b.login
+    if (login?.email && login?.password) env.SHOAL_LOGIN = `${login.email}:${login.password}`
+    const child = spawn(process.execPath, args, { cwd: cfg.dir, detached: true, stdio: ['ignore', out, out], env })
     child.unref()
     return { message: `started a run against ${url}`, pid: child.pid }
   })
@@ -115,6 +121,16 @@ export async function serve(cfg: Config, get: () => Record<string, unknown>): Pr
       return reply.type('text/html').send(html)
     } catch {
       return reply.code(404).type('text/plain').send('No report yet. One is written a minute into a run, and when it ends.')
+    }
+  })
+
+  app.get<{ Params: { file: string } }>('/reports/:file', async (req, reply) => {
+    if (!/^run-\d+\.(html|md)$/.test(req.params.file)) return reply.code(404).send('')
+    try {
+      const body = await readFile(join(shoalDir(cfg.dir), 'reports', req.params.file), 'utf8')
+      return reply.type(req.params.file.endsWith('.md') ? 'text/markdown; charset=utf-8' : 'text/html').send(body)
+    } catch {
+      return reply.code(404).type('text/plain').send('No such report.')
     }
   })
 

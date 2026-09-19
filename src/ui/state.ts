@@ -7,6 +7,9 @@ import * as recordings from '../store/repo/recordings.js'
 import * as queue from '../store/repo/queue.js'
 import { currentRun } from '../store/repo/run.js'
 import { live } from './live.js'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
+import { shoalDir } from '../store/db.js'
 import * as steps from '../store/repo/steps.js'
 import * as suspicions from '../store/repo/suspicions.js'
 import * as spend from '../store/repo/spend.js'
@@ -44,6 +47,7 @@ export function state(db: DB, cfg: Config, appUrl: string, build_: string): Reco
       dir: cfg.dir,
       maxUsd: ran.jev?.maxUsd ?? null,
       explorers: ran.explorers,
+      logins: (ran.logins ?? []).map((l) => l.email),
     },
     app: {
       url: appUrl,
@@ -115,9 +119,48 @@ export function state(db: DB, cfg: Config, appUrl: string, build_: string): Reco
       requests: (db.prepare('SELECT COUNT(*) c FROM recordings WHERE account_id = ?').get(a.id) as { c: number }).c,
     })),
     judge: judgeState(db),
+    reports: reports(db, cfg),
     steps: steps.recent(db, 48).map(stepSummary),
     suspicions: suspicions.all(db).slice(0, 300).map(suspicionSummary),
   }
+}
+
+/**
+ * One report per run. Findings belong to the run they were first seen in;
+ * spend and screens are counted inside the run's window. The archived HTML
+ * and Markdown, written when the run ends, are the exports.
+ */
+function reports(db: DB, cfg: Config): unknown[] {
+  const runs = db.prepare('SELECT * FROM runs ORDER BY id DESC').all() as Array<{ id: number; app_url: string; config_json: string; started_at: number; last_seen_at: number; stopped_at: number | null; tenancy: string | null }>
+  const dir = join(shoalDir(cfg.dir), 'reports')
+  return runs.map((r) => {
+    const end = r.stopped_at ?? r.last_seen_at
+    const live = !r.stopped_at && Date.now() - r.last_seen_at < 30_000
+    const fs = db.prepare('SELECT id, kind, title, reproduced, attempts, repro_json, endpoint_id, first_seen_at, state FROM findings WHERE first_seen_at BETWEEN ? AND ? ORDER BY kind, reproduced DESC').all(r.started_at, end + 60_000) as Array<{ id: number; kind: string; title: string; reproduced: number; attempts: number; repro_json: string; endpoint_id: number | null; first_seen_at: number; state: string }>
+    const byKind: Record<string, number> = {}
+    for (const f of fs) byKind[f.kind] = (byKind[f.kind] ?? 0) + 1
+    const sp = db.prepare('SELECT COUNT(*) calls, COALESCE(SUM(usd),0) usd FROM model_calls WHERE at BETWEEN ? AND ?').get(r.started_at, end + 60_000) as { calls: number; usd: number }
+    const st = db.prepare("SELECT COUNT(*) n, COALESCE(SUM(CASE WHEN verdicts_json != '[]' THEN 1 ELSE 0 END),0) fired FROM steps WHERE at BETWEEN ? AND ?").get(r.started_at, end + 60_000) as { n: number; fired: number }
+    const sus = db.prepare("SELECT state, COUNT(*) c FROM suspicions WHERE created_at BETWEEN ? AND ? GROUP BY state").all(r.started_at, end + 60_000) as Array<{ state: string; c: number }>
+    const susBy: Record<string, number> = {}
+    for (const s of sus) susBy[s.state] = s.c
+    const acc = db.prepare('SELECT COUNT(*) c FROM accounts WHERE created_at BETWEEN ? AND ?').get(r.started_at, end + 60_000) as { c: number }
+    const cfgOf = runConfig(r.config_json)
+    return {
+      id: r.id, url: r.app_url, startedAt: r.started_at, endedAt: live ? null : end, live,
+      durationMs: (live ? Date.now() : end) - r.started_at,
+      forMs: cfgOf?.forMs ?? null, explorers: cfgOf?.explorers ?? null, tenancy: r.tenancy,
+      findings: fs.map((f) => {
+        const repro = safe(f.repro_json) as { screen?: string; check?: string } | null
+        const ep = f.endpoint_id ? map.endpointById(db, f.endpoint_id) : undefined
+        return { id: f.id, kind: f.kind, title: f.title, reproduced: f.reproduced, attempts: f.attempts, state: f.state, where: repro?.screen ?? (ep ? `${ep.method} ${ep.path_pattern}` : ''), surface: repro?.screen ? 'screen' : 'http' }
+      }),
+      byKind, calls: sp.calls, usd: sp.usd, steps: st.n, fired: st.fired,
+      suspicions: susBy, accounts: acc.c,
+      html: existsSync(join(dir, `run-${r.id}.html`)) ? `/reports/run-${r.id}.html` : r.id === runs[0]!.id && existsSync(join(shoalDir(cfg.dir), 'report.html')) ? '/report' : null,
+      md: existsSync(join(dir, `run-${r.id}.md`)) ? `/reports/run-${r.id}.md` : null,
+    }
+  })
 }
 
 /**
@@ -256,12 +299,12 @@ function pathOf(url: string): string {
 /** Before any run exists in the directory: enough for the front door to draw itself. */
 export function emptyState(cfg: Config): Record<string, unknown> {
   return {
-    run: { exists: false, running: false, startedAt: null, stoppedAt: null, forMs: null, endsAt: null, url: cfg.url, dir: cfg.dir, maxUsd: cfg.jev.maxUsd, explorers: cfg.explorers },
+    run: { exists: false, running: false, startedAt: null, stoppedAt: null, forMs: null, endsAt: null, url: cfg.url, dir: cfg.dir, maxUsd: cfg.jev.maxUsd, explorers: cfg.explorers, logins: cfg.logins.map((l) => l.email) },
     app: { url: cfg.url, uptimeMs: 0, build: '', running: false, driver: `typesafe / ${cfg.jev.model}`, planner: cfg.planner ? 'planner' : 'code', config: { explorers: cfg.explorers, hammerers: cfg.hammerers, confirmers: cfg.confirmers } },
     counters: { pages: 0, pagesExplored: 0, endpoints: 0, endpointsHammered: 0, writeEndpoints: 0, fields: 0, fieldsPoked: 0, accounts: 0, recordings: 0, findings: 0, unconfirmed: 0, frontier: 0, perAction: 0, spend: 0 },
     tenancy: null, workers: [], feed: [], hammers: [], starved: [], events: [], findings: [], unconfirmed: [],
     map: { endpoints: [], pages: [], forms: [] }, accounts: [],
     judge: { steps: 0, withVerdict: 0, rewalks: 0, medianMs: 0, calls: 0, tokens: 0, usd: 0, suspicions: { open: 0, confirmed: 0, unreproduced: 0 } },
-    steps: [], suspicions: [],
+    steps: [], suspicions: [], reports: [],
   }
 }

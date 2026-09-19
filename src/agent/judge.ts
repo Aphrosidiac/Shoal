@@ -85,7 +85,9 @@ export function judge(ctx: Ctx, worker: string, ev: StepEvidence, opts: { dry?: 
   const target = s.action.target ? `${s.action.target.role} "${s.action.target.name}"` : s.action.op
   const failed = ev.requests.filter((r) => (r.status ?? 0) >= 400 && !isDocument(r))
   const worst = failed.sort((x, y) => (y.status ?? 0) - (x.status ?? 0))[0]
-  const acted = s.action.op === 'click' || s.action.op === 'select' || s.action.op === 'press'
+  // A click the browser could not deliver — covered by an overlay, gone by
+  // the time it landed — did nothing because it never happened.
+  const acted = !s.action.failed && (s.action.op === 'click' || s.action.op === 'select' || s.action.op === 'press')
   const pErr = asNoul(a['screen.error'])
   const pOk = asNoul(a['screen.success'])
   const wrote = ev.requests.some((r) => /^(POST|PUT|PATCH|DELETE)$/i.test(r.method) && (r.status ?? 0) < 400)
@@ -93,6 +95,11 @@ export function judge(ctx: Ctx, worker: string, ev: StepEvidence, opts: { dry?: 
   // that is not one — sends nothing and shows a native bubble the DOM cannot
   // see. That is the browser working, not a control that does nothing.
   const nativeRefusal = acted && submitOf(ev.before, s.action.target) !== null && formInvalid(ev.before, submitOf(ev.before, s.action.target)!)
+  // A link to the screen already showing does nothing, by design; and the
+  // brand link — the first link on the page — goes home whatever it says.
+  const href = s.action.target?.href ? pathOf(new URL(s.action.target.href, 'http://x' + ev.before.path).toString()) : null
+  const sameTarget = href !== null && href.replace(/\/$/, '') === ev.before.path.replace(/\/$/, '')
+  const brandLink = s.action.target?.role === 'link' && ev.before.controls.find((c) => c.role === 'link')?.name === s.action.target?.name
 
   // ---- code ----
   const dev = DEV_TEXT.find((re) => re.test(after.visibleText))
@@ -109,7 +116,7 @@ export function judge(ctx: Ctx, worker: string, ev: StepEvidence, opts: { dry?: 
   // A control that changes nothing AND sends nothing is a stronger case than
   // one that at least talked to the server, so the bar is lower for it.
   const pShould = asNoul(a['screen.should_have_changed'])
-  if (acted && !ev.changed && !nativeRefusal && pShould >= (ev.requests.length === 0 ? 0.7 : SUSPECT)) {
+  if (acted && !ev.changed && !nativeRefusal && !sameTarget && pShould >= (ev.requests.length === 0 ? 0.7 : SUSPECT)) {
     verdicts.push({
       check: 'screen.dead_control', screen: ev.before.urlPattern, kind: 'wrong', shape: s.action.target?.name ?? '', p: pShould,
       title: `${target} on ${ev.before.urlPattern} does nothing`,
@@ -238,7 +245,7 @@ export function judge(ctx: Ctx, worker: string, ev: StepEvidence, opts: { dry?: 
     }
     if (p < SUSPECT) continue
     if (check === 'screen.dead_end' && after.controls.some((c) => c.role === 'link')) continue
-    if (check === 'screen.wrong_destination' && !acted) continue
+    if (check === 'screen.wrong_destination' && (!acted || sameTarget || brandLink)) continue
     if (check === 'screen.wrong_destination' && verdicts.some((v) => v.check === 'screen.logged_out')) continue
     verdicts.push({
       check, kind, title, detail, p, question: check,

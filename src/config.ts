@@ -34,8 +34,20 @@ export type JevConfig = {
   suspect: number
 }
 
+/** An account you hand Shoal because the app has no sign-up. */
+export type Login = { email: string; password: string }
+
 export type Config = {
   url: string
+  /**
+   * Sign-ins to use when the app has no sign-up form. Shoal cannot make
+   * accounts on an invite-only app, so it uses these — the fresh-world
+   * guarantee is lost (missions and rewalks share the account) and the
+   * cross-account checks need two of them. Also read from SHOAL_LOGIN as
+   * "email:password[,email:password]", which is how the dashboard passes one
+   * to a run without putting it on a command line.
+   */
+  logins: Login[]
   dir: string
   explorers: number
   hammerers: number
@@ -60,6 +72,7 @@ export type Config = {
 
 const DEFAULTS: Config = {
   url: 'http://localhost:3000',
+  logins: [],
   dir: process.cwd(),
   explorers: 3,
   hammerers: 16,
@@ -105,6 +118,19 @@ export function assertLocal(url: string): URL {
   return u
 }
 
+/** "email:password,email:password" -> logins. A password may itself contain a colon. */
+export function parseLogins(s: string): Login[] {
+  return s
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .map((pair) => {
+      const i = pair.indexOf(':')
+      if (i <= 0) throw new Error(`"${pair}" is not email:password`)
+      return { email: pair.slice(0, i).trim(), password: pair.slice(i + 1) }
+    })
+}
+
 export function parseDuration(s: string): number {
   const m = /^(\d+(?:\.\d+)?)\s*(ms|s|m|h|d)?$/.exec(s.trim())
   if (!m) throw new Error(`"${s}" is not a duration. Try 30m, 24h, 90s.`)
@@ -129,6 +155,7 @@ function fromEnv(): Record<string, unknown> {
   const num = (v: string | undefined) => (v === undefined || v === '' ? undefined : Number(v))
   const out: Record<string, unknown> = {
     url: e.SHOAL_URL,
+    logins: e.SHOAL_LOGIN ? parseLogins(e.SHOAL_LOGIN) : undefined,
     explorers: num(e.SHOAL_EXPLORERS),
     hammerers: num(e.SHOAL_HAMMERERS),
     confirmers: num(e.SHOAL_CONFIRMERS),

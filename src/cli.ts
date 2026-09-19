@@ -2,7 +2,7 @@
 import { setDefaultResultOrder } from 'node:dns'
 import { existsSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { loadDotEnv, loadConfig, assertLocal, parseDuration, type Config } from './config.js'
+import { loadDotEnv, loadConfig, assertLocal, parseDuration, parseLogins, type Config } from './config.js'
 import { openReadOnly, shoalDir } from './store/db.js'
 import { build } from './report/build.js'
 import { html, markdown, text } from './report/render.js'
@@ -33,6 +33,7 @@ const HELP = `shoal — a swarm of agents that use your app until it breaks
 
   --explorers N  --hammerers N  --confirmers N  --pace N
   --for 30m|24h  --budget N  --jev-max-usd N  --planner name
+  --login email:password   an account to use when the app has no sign-up (or SHOAL_LOGIN)
   --no-ui  --redact  --verbose  --headed
 `
 
@@ -78,6 +79,7 @@ function toConfigFlags(f: Flags, args: string[], cmd = 'run'): Record<string, un
   if (f.budget !== undefined) out.budgetPerHour = Number(f.budget)
   if (f.for !== undefined) out.forMs = parseDuration(String(f.for))
   if (f['jev-max-usd'] !== undefined) out.jev = { maxUsd: Number(f['jev-max-usd']) }
+  if (f.login !== undefined) out.logins = parseLogins(String(f.login))
   if (f.planner !== undefined) out.planner = { provider: 'anthropic', model: String(f.planner), maxTokens: 2000 }
   if (f['no-ui']) out.ui = { enabled: false }
   if (f.redact) out.redact = true

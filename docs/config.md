@@ -12,6 +12,7 @@ to spend.
 | `hammerers` | 16 | pure HTTP workers. Nearly free. This is what finds races |
 | `confirmers` | 2 | replay suspicions to see if they are real. Nearly free |
 | `rewalks` | 2 | fresh-account walks a screen suspicion must survive, every one agreeing |
+| `logins` | `[]` | `[{ "email", "password" }]` to use when the app has no sign-up; also `--login` and `SHOAL_LOGIN=email:password[,…]`. Shared across the swarm, so the fresh-world guarantee is lost; two of them give the cross-account checks two people |
 | `jev.maxUsd` | none | hard stop on TypeSafe spend for the run directory |
 | `jev.suspect` | 0.85 | the probability at which a judgment becomes a suspicion |
 | `budgetPerHour` | none | optional ceiling in dollars or tokens. It paces itself to fit |

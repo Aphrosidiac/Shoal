@@ -42,3 +42,16 @@ export const setRole = (db: DB, id: number, role: string): void => {
 export const setTenantKey = (db: DB, id: number, key: string): void => {
   db.prepare('UPDATE accounts SET tenant_key = ? WHERE id = ?').run(key, id)
 }
+
+/** An account the user handed us. Kept fresh: the password they give now wins. */
+export function given(db: DB, a: { email: string; password: string }): Account {
+  const existing = db.prepare('SELECT * FROM accounts WHERE email = ?').get(a.email) as Account | undefined
+  if (existing) {
+    db.prepare("UPDATE accounts SET password = ?, role = 'given', state = 'ok' WHERE id = ?").run(a.password, existing.id)
+    return db.prepare('SELECT * FROM accounts WHERE id = ?').get(existing.id) as Account
+  }
+  return create(db, { email: a.email, password: a.password, display: a.email.split('@')[0] ?? null, role: 'given' })
+}
+
+export const givenOnes = (db: DB): Account[] =>
+  db.prepare("SELECT * FROM accounts WHERE role = 'given' AND state = 'ok' ORDER BY id").all() as Account[]

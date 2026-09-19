@@ -137,9 +137,27 @@ function valueFor(c: Control, who: Identity): string | null {
   return null
 }
 
-/** Signed in means the app says so, not that the URL looks different. */
+/** The browser holds something an app could be keeping a session in. */
+async function carriesSession(s: Session): Promise<boolean> {
+  const cookies = await s.context.cookies(s.ctxBase).catch(() => [])
+  if (cookies.length) return true
+  if (!/^https?:/.test(s.page.url())) return false
+  return Boolean(await s.page.evaluate('(() => { try { return Object.keys(localStorage).length + Object.keys(sessionStorage).length > 0 } catch (e) { return false } })()').catch(() => false))
+}
+
+/**
+ * Signed in means the app says so, not that the URL looks different.
+ *
+ * A client-rendered app decides after the click: the form is still on screen
+ * while the request is out, then the route changes. So a password field that
+ * is still there is not "no" yet — look again, a few times, before saying so.
+ */
 export async function signedIn(s: Session): Promise<boolean> {
-  const snap = await s.look()
+  let snap = await s.look()
+  for (let i = 0; i < 16 && snap.controls.some((c) => c.type === 'password'); i++) {
+    await new Promise((r) => setTimeout(r, 500))
+    snap = await s.look()
+  }
   const url = s.page.url()
   if (/\/(login|signin|sign-in|register|signup|sign-up)\b/.test(new URL(url).pathname)) {
     // still on the door
@@ -152,6 +170,15 @@ export async function signedIn(s: Session): Promise<boolean> {
 }
 
 export async function logIn(ctx: Ctx, s: Session, a: Account): Promise<boolean> {
+  // Already in as this person — a mission reusing the handed-over account in
+  // a browser that never signed out. A single-page app answers /login with
+  // the dashboard in that state, so asking for the form would fail for the
+  // wrong reason. Somebody else's session gets cleared first.
+  if (s.account?.id === a.id && (await carriesSession(s)) && (await signedIn(s))) return true
+  if (s.account && s.account.id !== a.id) {
+    await s.context.clearCookies().catch(() => undefined)
+    await s.page.evaluate('(() => { try { localStorage.clear(); sessionStorage.clear() } catch (e) {} })()').catch(() => undefined)
+  }
   const path = (await findLoginPath(ctx, s)) ?? '/login'
   await s.goto(path)
   let snap = s.last!

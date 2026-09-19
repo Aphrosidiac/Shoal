@@ -327,6 +327,7 @@ shoal bench              score against the calibration fixture
 shoal mcp                run as an MCP server on stdio
 
   --for 30m|24h  --jev-max-usd N  --explorers N  --hammerers N  --confirmers N
+  --login email:password   an account to use when the app has no sign-up (or SHOAL_LOGIN)
   --pace N  --budget N  --no-ui  --redact  --verbose  --headed
 ```
 
@@ -341,6 +342,7 @@ day of mapping should not be one keystroke. Everything Shoal writes lives in
   "explorers": 3, "hammerers": 16, "confirmers": 2,
   "rewalks": 2,                                   // fresh-account walks a screen suspicion must survive
   "jev": { "model": "jev-latest", "maxUsd": 1, "suspect": 0.85 },
+  "logins": [],                                   // accounts to use when the app has no sign-up
   "planner": null                                 // optional generative tier for extra missions
 }
 ```
@@ -356,9 +358,12 @@ Worth knowing before you point it at something.
 
 - **It will not run against anything but localhost.** Not a staging box, not a
   VPN'd internal host. This is not a setting.
-- **It cannot get into an OAuth-only or invite-only app.** It needs a signup
-  form with an email and a password. If your app verifies email, point its SMTP
-  at `localhost:1025` and it reads its own verification links.
+- **It cannot sign itself up on an OAuth-only or invite-only app.** Hand it
+  an account — in the dashboard's start form, or `--login email:password` —
+  and it uses that instead. The fresh-world guarantee is lost (missions and
+  rewalks share the account) and the cross-account checks need two. If your
+  app verifies email on sign-up, point its SMTP at `localhost:1025` and it
+  reads its own verification links.
 - **It needs a TypeSafe key.** The judging depends on calibrated
   probabilities, and Jev is the model trained for them. There is no local
   option.

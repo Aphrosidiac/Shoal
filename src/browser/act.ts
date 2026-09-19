@@ -21,6 +21,21 @@ export async function settle(page: Page): Promise<void> {
   } catch {
     /* a page that never idles is normal; carry on */
   }
+  // A client-rendered app answers a click after the network is quiet: the
+  // route changes, then the data lands, then the view draws. Wait for the
+  // screen to hold still for a moment, but never for long.
+  try {
+    let last = ''
+    let still = 0
+    for (let i = 0; i < 10 && still < 2; i++) {
+      const now = (await page.evaluate("location.href + '|' + (document.body ? document.body.innerText.length : 0) + '|' + document.querySelectorAll('input,button,a,select').length")) as string
+      still = now === last ? still + 1 : 0
+      last = now
+      if (still < 2) await page.waitForTimeout(150)
+    }
+  } catch {
+    /* mid-navigation; the next look() waits for the document */
+  }
 }
 
 function find(snap: Snapshot, ref: string): Control | null {
@@ -39,6 +54,19 @@ export async function click(page: Page, snap: Snapshot, ref: string): Promise<Ac
   try {
     await page.locator(c.selector).first().click({ timeout: 5000 })
   } catch (e) {
+    // Something is over it — a command palette, a modal, a toast. What a
+    // user does is press Escape and try again; so does this, once.
+    if (/intercepts pointer events|outside of the viewport/i.test(String((e as Error).message))) {
+      try {
+        await page.keyboard.press('Escape')
+        await page.waitForTimeout(250)
+        await page.locator(c.selector).first().click({ timeout: 4000 })
+        await settle(page)
+        return { ok: true, note: `dismissed what was over it, then clicked ${c.role} "${c.name}"` }
+      } catch (e2) {
+        return { ok: false, note: `could not click ${ref} "${c.name}": ${short(e2)}` }
+      }
+    }
     return { ok: false, note: `could not click ${ref} "${c.name}": ${short(e)}` }
   }
   await settle(page)

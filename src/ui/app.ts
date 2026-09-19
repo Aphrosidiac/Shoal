@@ -53,7 +53,7 @@ const NAV = [
   ['Run', [['overview', 'Overview', 'home'], ['live', 'Live', 'live']]],
   ['Results', [['findings', 'Findings', 'bug'], ['suspicions', 'Suspicions', 'eye']]],
   ['Coverage', [['map', 'Map', 'map'], ['accounts', 'Accounts', 'users']]],
-  ['System', [['log', 'Log', 'log'], ['report', 'Report', 'doc']]],
+  ['System', [['reports', 'Reports', 'doc'], ['log', 'Log', 'log']]],
 ]
 const TITLES = {
   overview: ['Overview', (s) => s.run.exists ? esc(s.run.url) + ' · ' + (s.run.running ? 'running for ' + dur(s.app.uptimeMs) : 'finished') : 'Point Shoal at your app on localhost'],
@@ -63,12 +63,13 @@ const TITLES = {
   map: ['Map', () => 'what Shoal knows about the app — untouched first'],
   accounts: ['Accounts', () => 'every one of these signed itself up'],
   log: ['Log', () => 'everything that made the run less than it appears'],
+  reports: ['Reports', (s) => s.reports.length + ' run' + (s.reports.length === 1 ? '' : 's') + ' in this directory — every one kept'],
 }
 
 function counts(s) {
   return {
     live: s.judge.steps, findings: s.counters.findings,
-    suspicions: s.judge.suspicions.open, map: s.map.pages.length, accounts: s.counters.accounts, log: s.events.length,
+    suspicions: s.judge.suspicions.open, map: s.map.pages.length, accounts: s.counters.accounts, log: s.events.length, reports: s.reports.length,
   }
 }
 
@@ -78,10 +79,10 @@ function drawRail(s) {
     '<div class="brand"><span class="mark"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M2 13c2.2-1.6 4-1.6 6 0 2-1.6 3.8-1.6 6 0 1.4-1.1 2.7-1.5 4-1.2" stroke="#7dd56f" stroke-width="1.6" stroke-linecap="round"/><path d="M2 17c2.2-1.6 4-1.6 6 0 2-1.6 3.8-1.6 6 0" stroke="#fff" stroke-opacity=".55" stroke-width="1.6" stroke-linecap="round"/><path d="M11.5 3 17 6.2l-5.5 3.2V3Z" fill="#7dd56f"/></svg></span><b>Shoal</b></div>' +
     NAV.map(([g, items]) => '<div class="group"><div class="lbl">' + g + '</div><div class="nav">' +
       items.map(([k, label, ic]) => {
-        const href = k === 'report' ? '/report' : '#' + k
+        const href = '#' + k
         const n = c[k]
         const tone = k === 'findings' && n ? ' red' : k === 'suspicions' && n ? ' amber' : ''
-        return '<a href="' + href + '"' + (k === 'report' ? ' target="_blank"' : '') + (route.view === k ? ' aria-current="page"' : '') + '>' + I[ic] + esc(label) +
+        return '<a href="' + href + '"' + (route.view === k ? ' aria-current="page"' : '') + '>' + I[ic] + esc(label) +
           (n ? '<span class="cnt' + tone + '">' + n + '</span>' : '') + '</a>'
       }).join('') + '</div></div>').join('') +
     '<div class="railfoot">' +
@@ -102,7 +103,7 @@ function drawHead(s) {
     acts = '<span class="chip green">' + I.spark.replace('<svg', '<svg width="12" height="12"') + ' running · ' + left + '</span>' +
       '<button class="btn secondary" id="stop">' + I.stop + 'Stop</button>'
   } else if (r.exists) {
-    acts = '<a class="btn secondary" href="/report" target="_blank">' + I.doc + 'Report</a><button class="btn accent" id="start">' + I.play + 'Run again</button>'
+    acts = '<a class="btn secondary" href="#reports">' + I.doc + 'Reports</a><button class="btn accent" id="start">' + I.play + 'Run again</button>'
   } else if (route.view !== 'overview') {
     // The one green button on a page. On the front door it is the form's.
     acts = '<button class="btn accent" id="start">' + I.play + 'Start a run</button>'
@@ -124,6 +125,7 @@ function draw() {
     case 'map': c.innerHTML = mapView(S); break
     case 'accounts': c.innerHTML = accounts(S); break
     case 'log': c.innerHTML = log(S); break
+    case 'reports': c.innerHTML = reportsView(S); break
     default: c.innerHTML = overview(S)
   }
   wire()
@@ -161,7 +163,7 @@ function overview(s) {
   const untouched = s.map.pages.filter((p) => !p.explored).slice(0, 5)
   const unhammered = s.map.endpoints.filter((e) => e.writes && !e.hammered).slice(0, 5)
   return '<div class="stack">' +
-    (done ? callout('grey', 'doc', '<b>This run has finished.</b> Everything stays on disk; <a href="/report" target="_blank">open the report</a> or run again and it picks up where it left off.') : '') +
+    (done ? callout('grey', 'doc', '<b>This run has finished.</b> Everything stays on disk; <a href="#reports">read its report</a> or run again and it picks up where it left off.') : '') +
     '<div class="card kpis">' +
       kpi('Findings', c.findings, '', c.unconfirmed ? c.unconfirmed + ' more did not hold' : 'each one reproduced', 'bug', c.findings ? chip(c.findings + ' to fix', 'red', true) : chip('clean so far', 'green', true)) +
       kpi('Screens judged', j.steps, '', (s.app.uptimeMs > 60000 ? (j.steps / (s.app.uptimeMs / 60000)).toFixed(0) + ' a minute · ' : '') + j.withVerdict + ' fired', 'judge') +
@@ -220,6 +222,12 @@ function startForm(s, inline) {
       '<label class="f"><b>Jev budget</b><input class="field" name="usd" type="number" step="0.05" min="0" value="' + (r.maxUsd != null ? r.maxUsd : 1) + '"><span class="hint">a dollar is roughly eight thousand judged screens</span></label>' +
     '</div>' +
     '<div class="two"><label class="f"><b>Explorers</b><select class="field" name="explorers">' + [1, 2, 3, 4, 6].map((n) => '<option' + (n === (r.explorers || 3) ? ' selected' : '') + '>' + n + '</option>').join('') + '</select><span class="hint">browser agents, each its own account</span></label></div>' +
+    '<div class="section" style="margin-top:4px">Sign in with — only if the app has no sign-up</div>' +
+    '<div class="two">' +
+      '<label class="f"><b>Email</b><input class="field" name="email" type="email" autocomplete="off" value="' + esc((r.logins || [])[0] || '') + '" placeholder="someone@yourapp.test"></label>' +
+      '<label class="f"><b>Password</b><input class="field" name="password" type="password" autocomplete="new-password" placeholder="' + ((r.logins || []).length ? 'unchanged unless you type one' : '') + '"></label>' +
+    '</div>' +
+    '<span class="hint">Shoal signs itself up when it can, and that is what makes every mission start in a fresh world. On an invite-only app it uses this account instead — missions and rewalks share it, and the cross-account checks need two. Stored in .shoal/run.db on this machine, like every account it makes.</span>' +
     '<div class="err" id="starterr"></div>' +
     '<div class="end">' + (inline ? '' : '<button type="button" class="btn secondary" id="cancelstart">Cancel</button>') + '<button type="submit" class="btn accent lg">' + I.play + 'Start the run</button></div>' +
     '</form>'
@@ -242,6 +250,7 @@ function wireStart() {
     b.disabled = true
     const fd = new FormData(f)
     const body = { url: fd.get('url'), forMs: Number(fd.get('for')) * 60000, maxUsd: Number(fd.get('usd')), explorers: Number(fd.get('explorers')) }
+    if (fd.get('email') && fd.get('password')) body.login = { email: fd.get('email'), password: fd.get('password') }
     const r = await fetch('/api/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then((x) => x.json()).catch(() => ({ error: 'could not reach shoal' }))
     if (r.error) { $('#starterr').textContent = r.error; b.disabled = false; return }
     $('#modal').classList.remove('on')
@@ -428,6 +437,35 @@ function log(s) {
   return '<div class="stack"><div class="card"><div class="hd flush"><div class="t">' + ibox('log') + '<div class="tt"><h3>Run log</h3><span class="s">the run’s own words, live</span></div></div></div><div class="bd flush"><div class="runlog" id="runlog">loading…</div></div></div>' +
     '<div class="card"><div class="hd flush"><div class="t">' + ibox('warn') + '<div class="tt"><h3>Events</h3><span class="cnt">' + s.events.length + '</span></div></div></div><div class="bd flush log">' +
     (s.events.length ? s.events.map((e) => '<div class="l"><span class="t">' + hhmm(e.at) + '</span><span>' + chip(e.kind, TONE[e.kind] || 'neutral', true) + '</span><span>' + esc(e.message) + '</span></div>').join('') : '<div class="empty"><span>nothing to report</span></div>') + '</div></div></div>'
+}
+
+// ---------- reports ----------
+function reportsView(s) {
+  const rs = s.reports
+  if (!rs.length) return empty('doc', 'No runs yet', 'Every run leaves a report here, and its HTML and Markdown on disk under .shoal/reports/.')
+  const sel = rs.find((r) => r.id === route.id) || rs[0]
+  return '<div class="card pane"><div class="list">' + rs.map((r) => {
+    const n = r.findings.length
+    return '<div class="item" data-go="reports/' + r.id + '" aria-selected="' + (sel.id === r.id) + '"><div class="tx"><b>' + esc(dateOf(r.startedAt)) + ' · ' + dur(r.durationMs) + (r.live ? ' so far' : '') + '</b><div class="m">' + (r.live ? chip('running', 'green', true) : chip('finished', 'neutral', true)) + chip(n + ' finding' + (n === 1 ? '' : 's'), n ? 'red' : 'green', true) + '<span class="w">' + esc(r.url.replace(/^https?:\/\//, '')) + '</span></div></div><span class="t">run ' + r.id + '</span></div>'
+  }).join('') + '</div><div class="detail">' + reportDetail(sel) + '</div></div>'
+}
+const dateOf = (t) => new Date(t).toLocaleDateString([], { day: 'numeric', month: 'short' }) + ' ' + hhmm(t)
+function reportDetail(r) {
+  const kinds = Object.keys(r.byKind)
+  const screen = r.findings.filter((f) => f.surface === 'screen').length
+  return '<div class="dhead"><h3>' + esc(r.url) + '</h3><div class="dmeta" style="margin:0">' + (r.html ? '<a class="btn secondary sm" href="' + r.html + '" target="_blank">' + I.doc + 'HTML</a>' : '') + (r.md ? '<a class="btn secondary sm" href="' + r.md + '" target="_blank">Markdown</a>' : '') + '</div></div>' +
+    '<div class="dmeta">' + (r.live ? chip('running', 'green') : chip('finished ' + dateOf(r.endedAt), 'neutral')) + chip('started ' + dateOf(r.startedAt), 'outline') + chip(dur(r.durationMs) + (r.forMs ? ' of ' + dur(r.forMs) : ''), 'outline') + (r.explorers ? chip(r.explorers + ' explorers', 'outline') : '') + (r.tenancy && r.tenancy !== 'unknown' ? chip('accounts ' + r.tenancy, 'blue') : '') + '</div>' +
+    '<div class="card kpis" style="margin:14px 0 18px;box-shadow:none">' +
+      kpi('Findings', r.findings.length, '', screen ? screen + ' seen on screen · ' + (r.findings.length - screen) + ' in traffic' : r.findings.length ? 'all in traffic' : 'nothing reproduced') +
+      kpi('Screens judged', r.steps, '', r.fired + ' fired') +
+      kpi('Suspicions', (r.suspicions.confirmed || 0) + (r.suspicions.unreproduced || 0) + (r.suspicions.open || 0), '', (r.suspicions.confirmed || 0) + ' held · ' + (r.suspicions.unreproduced || 0) + ' did not') +
+      kpi('Jev spend', usd(r.usd, 3), '', r.calls + ' requests · ' + r.accounts + ' accounts made') +
+    '</div>' +
+    (r.findings.length
+      ? '<div class="section">Findings first seen in this run' + (kinds.length ? ' — ' + kinds.map((k) => (KIND[k] || [k])[0].toLowerCase() + ' ' + r.byKind[k]).join(', ') : '') + '</div>' +
+        '<div class="rows" style="border:1px solid var(--line-100);border-radius:12px;overflow:hidden">' + r.findings.map((f) => '<div class="row link" data-go="findings/' + f.id + '">' + kindChip(f.kind) + '<div class="tx"><b>' + esc(f.title) + '</b><span>' + esc(f.where) + ' · ' + f.reproduced + '/' + f.attempts + ' reproduced' + (f.state !== 'open' ? ' · ' + esc(f.state) : '') + '</span></div><span class="chev">' + I.chev + '</span></div>').join('') + '</div>'
+      : empty('bug', 'Nothing reproduced in this run', 'Suspicions were filed and checked; none held.')) +
+    '<p class="hint" style="margin-top:16px">Findings are ranked by category, then by how often they reproduced. The HTML and Markdown are the same report, written when the run ended, for sending on.</p>'
 }
 
 // ---------- shared ----------

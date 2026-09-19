@@ -9,8 +9,8 @@ a browser; it is the reference the real thing gets built against.
 ## The flow
 
 The dashboard is the front door. `shoal ui` in a directory — no run needed —
-and the Overview is a form: a URL, a duration, a Jev budget, one green
-button. That spawns `shoal run` detached (`--no-ui`, because this is the
+and the Overview is a form: a URL, a duration, a Jev budget, and — only if
+the app has no sign-up — an account to sign in with. One green button. That spawns `shoal run` detached (`--no-ui`, because this is the
 UI) and the header carries the run state on every page: *running · 9m left*
 and a Stop button, or *Report* and *Run again* once it ends.
 
@@ -23,7 +23,8 @@ The rail is grouped by what a person came to do, the way ANK Ops' is:
 | **Results** | Findings | two-pane: the list with kind and reproduction, the detail with evidence pictures, the repro steps and a Recheck button |
 | | Suspicions | two-pane: what looked wrong, what happened when it was checked, the trail a confirmer replays |
 | **Coverage** | Map, Accounts | untouched first |
-| **System** | Log, Report | the run's own words, and `report.html` |
+| **System** | Reports | one report per run — findings first seen in that run, screens judged, suspicions, spend — with the HTML and Markdown written when it ended as exports (`.shoal/reports/run-N.*`) |
+| | Log | the run's own words, live |
 
 ## The language
 

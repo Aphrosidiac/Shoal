@@ -161,3 +161,24 @@ text exactly as stored. It is bug #22 now, with its own check, and it stays.
 and the thing that puts data in the app; at base 70 × unexplored-share they
 never ran in eight minutes. Base 130, lean 1.
 
+**A single-page app keeps its session where the cookie jar cannot see.**
+Pointed at ANK Ops (a Vue SPA with a bearer token in localStorage and no
+sign-up), four things were wrong at once and each was a cookie assumption:
+"is the browser carrying a session" looked only at cookies, so every screen
+was filed public and no mission was ever written; the replayer spoke only in
+cookies, so every HTTP probe answered 401; a login that succeeded was called
+a failure because the form was still on screen while the app decided; and a
+mission reusing the given account asked `/login` for a form the router had
+already redirected away from. All four now look at what the browser actually
+holds — cookies, storage, the recorded `authorization` header — and wait for
+the app to decide. A handed-over account (`--login`, or the start form) is
+shared across the swarm and said so once: the fresh-world guarantee is lost,
+and the rewalk becomes "the same account, walked again".
+
+**A click that never landed is not a dead control.** A command palette left
+open by the previous click intercepted the next one; Playwright refused it;
+the judge called the link dead. A refused click now presses Escape and tries
+once more, and a click that still failed is recorded as failed and judged as
+nothing. A link to the screen already showing, and the brand link, are not
+wrong destinations either.
+

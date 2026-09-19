@@ -1,4 +1,4 @@
-import { writeFileSync } from 'node:fs'
+import { writeFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Config } from './config.js'
 import { assertLocal } from './config.js'
@@ -15,6 +15,7 @@ import { MailCatcher } from './signup/mail.js'
 import { AuthStore } from './signup/auth.js'
 import { Meter } from './budget/meter.js'
 import { Vault } from './signup/vault.js'
+import * as accountsRepo from './store/repo/accounts.js'
 import { buildModels } from './model/index.js'
 import { Jev } from './jev/client.js'
 import { jevConfig } from './jev/setup.js'
@@ -85,6 +86,8 @@ export async function boot(cfg: Config, log: (kind: string, message: string) => 
 
   const vault = new Vault(ctx)
   vault.setSignupPath(p.signupPath)
+  for (const l of cfg.logins) accountsRepo.given(db, l)
+  if (cfg.logins.length) log('account', `${cfg.logins.length} sign-in${cfg.logins.length === 1 ? '' : 's'} given: ${cfg.logins.map((l) => l.email).join(', ')}`)
 
   const sessions: Session[] = []
 
@@ -101,6 +104,11 @@ export async function boot(cfg: Config, log: (kind: string, message: string) => 
     writeFileSync(join(dir, 'report.md'), markdown(r))
     writeFileSync(join(dir, 'report.txt'), text(r))
     writeFileSync(join(dir, 'report.html'), html(r))
+    // One copy per run, so the dashboard can hold every report rather than
+    // whichever one was written last.
+    mkdirSync(join(dir, 'reports'), { recursive: true })
+    writeFileSync(join(dir, 'reports', `run-${run.id}.md`), markdown(r))
+    writeFileSync(join(dir, 'reports', `run-${run.id}.html`), html(r))
   }
 
   async function shutdown(): Promise<void> {

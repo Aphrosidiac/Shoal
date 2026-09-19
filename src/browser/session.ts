@@ -66,11 +66,18 @@ export class Session {
     // important screen in the app — was filed as a public page and every
     // explorer was then steered away from it.
     const cookies = await this.context.cookies(this.ctx.base).catch(() => [])
+    // A single-page app keeps its session in localStorage, not a cookie, so
+    // "is the browser carrying a session" has to look there too — or every
+    // screen behind the door is filed as public, no mission is ever written
+    // and the explorers are steered away from the whole app.
+    const stored = cookies.length
+      ? true
+      : await this.page.evaluate("(() => { try { return Object.keys(localStorage).length + Object.keys(sessionStorage).length > 0 } catch (e) { return false } })()").catch(() => false)
     const page = map.upsertPage(this.ctx.db, {
       url_pattern: s.urlPattern,
       title: s.title,
       screen_fp: s.fp,
-      requires_auth: cookies.length > 0,
+      requires_auth: cookies.length > 0 || Boolean(stored) || Boolean(this.account),
       example_url: s.url,
     })
     this.pageId = page.id
