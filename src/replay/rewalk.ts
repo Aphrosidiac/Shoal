@@ -46,8 +46,14 @@ export async function rewalk(
   for (let i = 0; i < walk.length; i++) {
     const t = walk[i]!
     if (ctx.stopping()) return { verdict: 'inconclusive', steps, recordingIds: [], why: 'stopping' }
-    if (!s.last || (t.op !== 'goto' && t.op !== 'back' && s.last.path !== t.url)) {
-      // Not where the original was. Try to get there before matching a control.
+    // Not where the original was: try to get there before matching a
+    // control. Compared by pattern, not address — the walk in this account
+    // made its own order, so it stands on /app/orders/91 where the original
+    // stood on /app/orders/5048, and that is the same place. Going to the
+    // recorded address instead opened another account's invoice and judged
+    // "no such invoice" as the answer to a contradiction.
+    const samePlace = s.last && ctx.patterns.pattern(s.last.path) === ctx.patterns.pattern(t.url)
+    if (!s.last || (t.op !== 'goto' && t.op !== 'back' && !samePlace)) {
       const r = await s.goto(t.url)
       if (!r.ok) return { verdict: 'inconclusive', steps, recordingIds: [], why: `could not open ${t.url} at step ${i + 1}` }
     }

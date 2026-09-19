@@ -113,6 +113,19 @@ export function judge(ctx: Ctx, worker: string, ev: StepEvidence, opts: { dry?: 
     })
   }
 
+  // A label whose "for" names no element. Clicking it focuses nothing and a
+  // screen reader cannot say what the control is. Pure DOM, p = 1; the
+  // rewalk sees the same DOM.
+  if (after.orphanLabels.length) {
+    const names = after.orphanLabels.slice(0, 4).join(', ')
+    verdicts.push({
+      check: 'screen.orphan_label', kind: 'wrong', shape: after.orphanLabels[0]!, p: 1,
+      title: `${after.urlPattern}${after.modal ? ` ("${after.modal}")` : ''} has label${after.orphanLabels.length === 1 ? '' : 's'} pointing at nothing: ${names}`,
+      detail: 'A <label for=…> names an id that no element on the screen has. Clicking the label focuses nothing, and assistive technology cannot name the control it was meant for.',
+      expected: 'every label is attached to its control', observed: `label${after.orphanLabels.length === 1 ? '' : 's'} ${names} on ${after.path} point at no element`,
+    })
+  }
+
   // A control that changes nothing AND sends nothing is a stronger case than
   // one that at least talked to the server, so the bar is lower for it.
   const pShould = asNoul(a['screen.should_have_changed'])
@@ -143,7 +156,10 @@ export function judge(ctx: Ctx, worker: string, ev: StepEvidence, opts: { dry?: 
     const f = s.after.fields.find((x) => x.name === k)
     return f !== undefined && f.value.trim() !== s.entered[k]!.trim()
   })
-  if (acted && pErr >= SUSPECT && enteredNames.length >= 2 && lost.length === enteredNames.length && after.path === ev.before.path) {
+  // All of them gone but at most one: a field reset to a default that happens
+  // to equal what was typed (a price box that starts at 100) is not the form
+  // keeping the value, and it kept the wipe from ever being seen.
+  if (acted && pErr >= SUSPECT && enteredNames.length >= 2 && lost.length >= 2 && lost.length >= enteredNames.length - 1 && after.path === ev.before.path) {
     verdicts.push({
       check: 'screen.lost_input', screen: ev.before.urlPattern, kind: 'wrong', shape: '', p: pErr,
       title: `${ev.before.urlPattern} empties the form when the submit fails`,
@@ -239,7 +255,12 @@ export function judge(ctx: Ctx, worker: string, ev: StepEvidence, opts: { dry?: 
     })
   }
   const loading = /\b(loading|please wait)\b|…$/i.test(after.visibleText)
+  // Typing PAID into a dropdown next to a line that says OPEN is not a
+  // contradiction, it is a form half filled. The app has not done anything
+  // yet; the screen's state is judged after the step that asks it to.
+  const formOnly = s.action.op === 'type' || s.action.op === 'select'
   for (const [check, kind, title, detail] of direct) {
+    if (formOnly && check !== 'screen.wrong_destination') continue
     let p = asNoul(a[check])
     if (check === 'screen.loading_stuck') {
       if (!loading) continue
@@ -279,8 +300,19 @@ export function judge(ctx: Ctx, worker: string, ev: StepEvidence, opts: { dry?: 
     const fp = findingFp(screen, v.check, v.shape)
     // One suspicion per fingerprint per run. Confirmed, it is already a
     // finding; unreproduced, walking it a third time is not new evidence;
-    // open, a confirmer already has it.
-    if (suspicions.anyByFp(ctx.db, fp)) continue
+    // open, a confirmer already has it. The one exception: an unreproduced
+    // suspicion filed from a shorter trail. The walk that did not hold was
+    // a walk that stopped early, and the longer one is new evidence — once.
+    const trail = shrinkTrail(ev.trail)
+    const earlier = suspicions.allByFp(ctx.db, fp)
+    if (earlier.length) {
+      const longer = earlier.length < 2 && earlier.every((e) => {
+        if (e.state !== 'unreproduced') return false
+        const was = (JSON.parse(e.note ?? '{}') as { trail?: unknown[] }).trail ?? []
+        return was.length < trail.length
+      })
+      if (!longer) continue
+    }
     const id = suspicions.file(ctx.db, {
       source: 'screen',
       worker,
@@ -290,7 +322,7 @@ export function judge(ctx: Ctx, worker: string, ev: StepEvidence, opts: { dry?: 
       note: JSON.stringify({
         check: v.check, kind: v.kind, title: v.title, detail: v.detail, fp, p: v.p,
         question: v.question ?? null, urlPattern: screen, path: after.path,
-        trail: shrinkTrail(ev.trail), entered: s.entered, goal: s.goal,
+        trail, entered: s.entered, goal: s.goal,
         kindOfScreen: asChoice(a['screen.kind'])?.choice ?? null,
       }),
     })

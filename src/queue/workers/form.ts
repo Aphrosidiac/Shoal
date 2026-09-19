@@ -30,7 +30,18 @@ export async function runForm(ctx: Ctx, s: Session, p: FormPayload): Promise<str
     formName(f.name, f.action, (path) => ctx.patterns.pattern(path))
 
   let snap = s.last!
-  const shape = pickForm(snap, form.name, named)
+  let shape = pickForm(snap, form.name, named)
+  if (!shape && form.in_dialog) {
+    // The form lives in a dialog, and the dialog is named after the button
+    // that opens it: "New customer" opens "New customer".
+    const opener = snap.controls.find((c) => c.role === 'button' && !c.disabled && form.name && c.name.toLowerCase() === form.name.toLowerCase())
+      ?? snap.controls.find((c) => c.role === 'button' && !c.disabled && /^(new|add|create)\b/i.test(c.name))
+    if (opener) {
+      await s.click(opener.ref)
+      snap = s.last!
+      shape = pickForm(snap, form.name, named)
+    }
+  }
   if (!shape) return `no form on ${p.path} any more`
 
   // everything else gets a plausible value; the one under test gets the class

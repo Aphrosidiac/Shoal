@@ -2,7 +2,20 @@ import type { Kind } from '../store/repo/queue.js'
 
 export type ExplorePayload = { pageId?: number; path?: string; why: string }
 export type FormPayload = { formId: number; fieldId: number; valueClass: string; path: string }
-export type MissionPayload = { goal: string; success: string; persona: string; fresh: boolean }
+/** One goal for the crew, in plain English, with the test that says it worked. */
+export type Link = { goal: string; success: string }
+/**
+ * A mission is a chain of links walked in one account, in order: make the
+ * order, then open its invoice and set the status. The persona applies to
+ * the last link only; the ones before it exist to put the world in the
+ * state the last one needs, and are walked plainly.
+ */
+export type MissionPayload = {
+  goal: string; success: string; persona: string; fresh: boolean; then?: Link[]; key?: string
+  /** The noun the first link makes, when the first link is a prerequisite put there by code; and the ones already tried. */
+  pre?: string
+  triedPre?: string[]
+}
 export type HammerPayload = { endpointId: number; shape: 'same-row' | 'shared-resource' | 'cross-action'; partnerId?: number }
 export type ConfirmPayload = { suspicionId: number }
 export type CrossAccountPayload = { recordingId: number; accountId: number }

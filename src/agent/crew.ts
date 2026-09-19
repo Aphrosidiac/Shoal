@@ -2,10 +2,11 @@ import type { Ctx } from '../ctx.js'
 import type { Session } from '../browser/session.js'
 import type { Vault } from '../signup/vault.js'
 import { runLoop, type LoopResult, type RunMemory } from './loop.js'
-import { personaByName } from './personas.js'
+import { personaByName, PERSONAS } from './personas.js'
 import * as coverage from '../store/repo/coverage.js'
+import type { MissionPayload } from '../queue/kinds.js'
 
-export type Mission = { goal: string; success: string; persona: string; fresh: boolean }
+export type Mission = MissionPayload
 
 /**
  * Many agents, each with a persona and a goal. Jev chooses every step toward
@@ -26,15 +27,34 @@ export async function crew(ctx: Ctx, s: Session, vault: Vault, m: Mission, memor
     vault.release(previous)
   }
 
-  const out = await runLoop(ctx, s, {
-    mode: 'mission',
-    goal: m.goal,
-    success: m.success,
-    persona: personaByName(m.persona),
-    worker: s.worker,
-    maxTurns: 28,
-    memory,
-  })
+  // A chain: every link before the last only puts the world in the state
+  // the last one needs, so it is walked plainly; the persona misbehaves on
+  // the last one. One account throughout, so what link one made is there
+  // for link two.
+  const links = [{ goal: m.goal, success: m.success }, ...(m.then ?? [])]
+  const plain = PERSONAS.find((p) => p.name === 'the beginner')!
+  let out: LoopResult = { turns: 0, modelCalls: 0, actions: 0, fastActions: 0, suspicions: 0, reason: 'done', result: '', notes: [] }
+  for (let i = 0; i < links.length; i++) {
+    const last = i === links.length - 1
+    const r = await runLoop(ctx, s, {
+      mode: 'mission',
+      goal: links[i]!.goal,
+      success: links[i]!.success,
+      persona: last ? personaByName(m.persona) : plain,
+      worker: s.worker,
+      maxTurns: 28,
+      memory,
+    })
+    out = {
+      ...r,
+      turns: out.turns + r.turns, modelCalls: out.modelCalls + r.modelCalls, actions: out.actions + r.actions,
+      fastActions: out.fastActions + r.fastActions, suspicions: out.suspicions + r.suspicions, notes: [...out.notes, ...r.notes],
+    }
+    if (r.reason !== 'done') {
+      if (links.length > 1) out.result = `link ${i + 1} of ${links.length}: ${r.result}`
+      break
+    }
+  }
   coverage.bump(ctx.db, out.reason === 'done' ? 'missions_finished' : 'missions_abandoned')
   return out
 }

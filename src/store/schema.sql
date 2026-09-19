@@ -63,7 +63,9 @@ CREATE TABLE IF NOT EXISTS forms (
   id          INTEGER PRIMARY KEY,
   page_id     INTEGER NOT NULL REFERENCES pages(id),
   name        TEXT,
-  endpoint_id INTEGER REFERENCES endpoints(id)
+  endpoint_id INTEGER REFERENCES endpoints(id),
+  submit      TEXT,
+  in_dialog   INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS fields (

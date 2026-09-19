@@ -15,6 +15,7 @@ export function pruned(s: Snapshot): ScreenState {
     title: s.title,
     headings: s.headings.slice(0, 6),
     messages: s.messages,
+    ...(s.modal ? { dialog: s.modal } : {}),
     fields: fields(s),
     text: s.visibleText.slice(0, 1200),
   }
@@ -26,6 +27,7 @@ export function full(s: Snapshot): ScreenState {
     title: s.title,
     headings: s.headings.slice(0, 10),
     messages: s.messages,
+    ...(s.modal ? { dialog: s.modal } : {}),
     fields: fields(s),
     text: s.visibleText,
     elements: elements(s).map(({ ref, ...e }) => ({ index: ref, ...e })),
@@ -77,12 +79,14 @@ export function elements(s: Snapshot, limit = 120): Element[] {
 }
 
 export const isEditable = (c: Control): boolean =>
-  !c.disabled && (c.role === 'textbox' || c.role === 'searchbox' || c.role === 'spinbutton' || (c.role === 'combobox' && c.tag !== 'select'))
+  !c.disabled && (c.role === 'textbox' || c.role === 'searchbox' || c.role === 'spinbutton' || (c.role === 'combobox' && (c.tag === 'input' || c.tag === 'textarea')))
 
 export const isSelect = (c: Control): boolean => !c.disabled && c.tag === 'select' && c.options.length > 0
 
 export const isClickable = (c: Control): boolean =>
-  !c.disabled && !DESTRUCTIVE.test(c.name) && (c.role === 'button' || c.role === 'link' || c.role === 'checkbox' || c.role === 'radio' || c.role === 'tab' || c.role === 'menuitem' || c.role === 'switch')
+  !c.disabled && !DESTRUCTIVE.test(c.name) && (c.role === 'button' || c.role === 'link' || c.role === 'checkbox' || c.role === 'radio' || c.role === 'tab' || c.role === 'menuitem' || c.role === 'switch' || c.role === 'option' ||
+    // A SPA's dropdown is a button that opens a list; clicking is how it is used.
+    (c.role === 'combobox' && c.tag === 'button'))
 
 /**
  * Did anything a user could see change? Compared in code, never asked of a
@@ -97,6 +101,10 @@ export function marker(s: Snapshot): string {
     s.messages,
     s.headings,
     s.controls.map((c) => [c.role, c.name, c.value, c.checked, c.disabled]),
+    // A row added below the fold is a change. The first 600 characters did
+    // not see it, so a second identical booking read as "does nothing".
+    s.tables.map((t) => t.count),
+    s.visibleText.length,
     s.visibleText.length > 600 ? s.visibleText.slice(0, 600) : s.visibleText,
   ])
 }

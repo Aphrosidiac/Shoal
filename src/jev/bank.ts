@@ -27,6 +27,8 @@ export type ScreenState = {
   title: string
   headings: string[]
   messages: string[]
+  /** The title of a modal dialog in front; the rest of the state is read from inside it. */
+  dialog?: string
   fields: Array<{ name: string; value: string }>
   text: string
   elements?: Array<Record<string, unknown>>

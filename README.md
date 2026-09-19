@@ -8,7 +8,7 @@
 
 [![Node 20+](https://img.shields.io/badge/node-20%2B-3d8f39?style=flat-square)](#try-it-in-two-minutes)
 [![Judge: TypeSafe Jev](https://img.shields.io/badge/judge-TypeSafe%20Jev-424242?style=flat-square)](https://docs.typesafe.ai)
-[![Bench: 14 of 22, 0 false positives](https://img.shields.io/badge/bench-14%20of%2022%20%C2%B7%200%20false%20positives-7dd56f?style=flat-square)](fixtures/leaky/BENCH.md)
+[![Bench: 16 of 22, 0 false positives](https://img.shields.io/badge/bench-16%20of%2022%20%C2%B7%200%20false%20positives-7dd56f?style=flat-square)](fixtures/leaky/BENCH.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-e9e7e6?style=flat-square)](LICENSE)
 
 [Try it](#try-it-in-two-minutes) · [How it works](#how-it-works) · [What it finds](#what-it-finds) · [The dashboard](#the-dashboard) · [Numbers](#how-we-know-it-works) · [Design docs](#the-design)
@@ -289,17 +289,19 @@ npm run shoal -- bench --for 10m --label "what changed"
 starts it fresh, runs against it, and prints five numbers. The real ones,
 every run, in [`BENCH.md`](fixtures/leaky/BENCH.md):
 
-| | The judge alone | Swarm, run 1 | Swarm, run 2 | Swarm, run 3 |
+| | The judge alone | Swarm, run 1 | Swarm, run 3 | Depth, run 3 |
 |---|---|---|---|---|
-| planted bugs found | **10 of 10** screen bugs | 9 of 22 | 11 of 22 | **14 of 22** |
+| planted bugs found | **10 of 10** screen bugs | 9 of 22 | 14 of 22 | **16 of 22** |
 | false positives | **0** on 7 non-bug screens | 6 | 0 | **0** |
 | wall clock | one scripted walk | 8 m | 10 m | 10 m |
-| Jev spend | $0.002 | $0.13 | $0.05 | $0.06 |
+| Jev spend | $0.002 | $0.13 | $0.06 | $0.13 |
 
 Every one of run 1's false positives was a missing *code* gate — a submit the
 browser itself refused, a sign-up link on a public page, one of two
 double-submits answering 409 — and never a wrong probability. Each is written
-down in [docs/decisions.md](docs/decisions.md) with what it cost.
+down in [docs/decisions.md](docs/decisions.md) with what it cost. The step
+from 14 to 16 was not judgment either: the swarm had never stood on the
+screens it missed, and the depth runs are about standing there.
 
 The twenty-second bug is the one worth telling: the copy-paster typed `<tag>`
 into a name field, the app said Saved, and the name came back without it. The
@@ -380,12 +382,16 @@ Worth knowing before you point it at something.
 ### Where it stands
 
 Built, measured, and running end to end; the numbers above are every run, not
-the flattering ones. Two things are honestly still open. The 24-hour unattended
-run has not been done — the four screen bugs the swarm has not yet reached in
-ten minutes need the persona rotation and the hours that a short run does not
-have. And missions that need a chain (make an order, open its invoice, set its
-status) reach the end only when the queue happens to serve them a cluttered
-account. Both are at the top of [`BENCH.md`](fixtures/leaky/BENCH.md).
+the flattering ones. Depth was the bottleneck, not judgment: the bugs a
+ten-minute swarm missed all sat behind a chain, so missions are chains now —
+make the order, then open its invoice and set its status, in one account,
+with the prerequisite read off the map and corrected at runtime — and a form
+runs once per persona that changes what happens at it. A single-page app's
+dialog counts as a form, and a modal in front is the screen. What is honestly
+still open: the 24-hour unattended run has not been done, and a suspicion
+that holds in the account it was seen in but not in a fresh one is currently
+dropped rather than reported at its true grade. Both are at the top of
+[`BENCH.md`](fixtures/leaky/BENCH.md).
 
 ---
 

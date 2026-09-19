@@ -11,7 +11,7 @@ export type Endpoint = {
   id: number; method: string; path_pattern: string; writes: number; calls: number
   statuses_json: string; hammered: number; readback_id: number | null; first_seen_at: number
 }
-export type Form = { id: number; page_id: number; name: string | null; endpoint_id: number | null }
+export type Form = { id: number; page_id: number; name: string | null; endpoint_id: number | null; submit: string | null; in_dialog: number }
 export type Field = { id: number; form_id: number; name: string; type: string | null; required: number; tried_json: string }
 
 export function upsertPage(
@@ -83,7 +83,7 @@ export const markHammered = (db: DB, id: number): void => {
 
 export function upsertForm(
   db: DB,
-  f: { page_id: number; name: string | null; endpoint_id?: number | null }
+  f: { page_id: number; name: string | null; endpoint_id?: number | null; submit?: string | null; in_dialog?: boolean }
 ): Form {
   const row = db.prepare("SELECT * FROM forms WHERE page_id = ? AND IFNULL(name, '') = IFNULL(?, '')")
     .get(f.page_id, f.name) as Form | undefined
@@ -91,10 +91,13 @@ export function upsertForm(
     if (f.endpoint_id && !row.endpoint_id) {
       db.prepare('UPDATE forms SET endpoint_id = ? WHERE id = ?').run(f.endpoint_id, row.id)
     }
+    if (f.submit && !row.submit) {
+      db.prepare('UPDATE forms SET submit = ? WHERE id = ?').run(f.submit, row.id)
+    }
     return row
   }
-  const info = db.prepare('INSERT INTO forms (page_id, name, endpoint_id) VALUES (?,?,?)')
-    .run(f.page_id, f.name, f.endpoint_id ?? null)
+  const info = db.prepare('INSERT INTO forms (page_id, name, endpoint_id, submit, in_dialog) VALUES (?,?,?,?,?)')
+    .run(f.page_id, f.name, f.endpoint_id ?? null, f.submit ?? null, f.in_dialog ? 1 : 0)
   return db.prepare('SELECT * FROM forms WHERE id = ?').get(Number(info.lastInsertRowid)) as Form
 }
 

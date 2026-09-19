@@ -60,6 +60,8 @@ export const now = (): number => Date.now()
  */
 const MIGRATIONS: Array<{ v: number; sql: string }> = [
   { v: 2, sql: "ALTER TABLE pages ADD COLUMN example_url TEXT" },
+  { v: 3, sql: "ALTER TABLE forms ADD COLUMN submit TEXT" },
+  { v: 4, sql: "ALTER TABLE forms ADD COLUMN in_dialog INTEGER NOT NULL DEFAULT 0" },
 ]
 
 function migrate(db: DB): void {

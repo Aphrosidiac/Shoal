@@ -90,6 +90,7 @@ and the composites use both:
 | `screen.duplicate` | one submit, two new rows | — |
 | `screen.logged_out` | a password field appeared on an ordinary click while signed in | — |
 | `screen.html_injection` | a `<tag>` typed in came back without it | — |
+| `screen.orphan_label` | a `<label for>` names an id no element has | — |
 | `screen.dev_text` | `undefined`, `NaN`, `{{…}}`, a stack frame | placeholder text a regex cannot name, on screens that show the app's own words |
 | `screen.contradiction` | — | two facts about one record that cannot both be true |
 | `screen.wrong_destination` | — | the label promised one thing, the heading says another |

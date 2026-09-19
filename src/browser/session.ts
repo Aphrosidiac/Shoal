@@ -129,7 +129,7 @@ export class Session {
       // never-tried. So the identity of a form is its pattern, not its
       // address.
       const name = formName(f.name, f.action, (p) => this.ctx.patterns.pattern(p))
-      const form = map.upsertForm(this.ctx.db, { page_id: pageId, name })
+      const form = map.upsertForm(this.ctx.db, { page_id: pageId, name, submit: f.submit || null, in_dialog: Boolean(s.modal) })
       for (const fd of f.fields) {
         map.upsertField(this.ctx.db, { form_id: form.id, name: fd.name, type: fd.type, required: fd.required })
       }

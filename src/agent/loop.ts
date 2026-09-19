@@ -38,6 +38,9 @@ export type LoopResult = {
   reason: 'done' | 'turns' | 'stuck' | 'model-down' | 'error'
   result: string
   notes: string[]
+  /** Where it ended, and whether that screen was an empty list — a mission that needs data it has none of. */
+  endedAt?: string
+  endedOnEmpty?: boolean
 }
 
 /**
@@ -147,6 +150,7 @@ export async function runLoop(ctx: Ctx, s: Session, opts: LoopOpts): Promise<Loo
   let blind = 0
   let skippedRequired: string | null = null
   let wentBack = false
+  const history: string[] = []
 
   const remember = (line: string) => {
     recent.push(line)
@@ -172,6 +176,8 @@ export async function runLoop(ctx: Ctx, s: Session, opts: LoopOpts): Promise<Loo
     blind = 0
     opts.memory.visit(snap.path)
     opts.memory.touch(snap.fp)
+    out.endedAt = snap.path
+    out.endedOnEmpty = looksEmpty(snap)
 
     // Signed in and standing on the sign-in screen, or on a marketing page:
     // that is somewhere to leave, not somewhere to explore.
@@ -330,6 +336,19 @@ export async function runLoop(ctx: Ctx, s: Session, opts: LoopOpts): Promise<Loo
       out.actions++
       coverage.bump(ctx.db, 'actions')
       pending = { action: r.action, before: snap, watermark, described: did }
+      // Type a name, press Quick add, see nothing, type a name, press Quick
+      // add: a driver that reads the screen literally will do that all
+      // afternoon. Three rounds of the same one-, two- or three-step dance
+      // is the loop, not the app, and the judge saw the screen the first
+      // time. Judged on what was done, not what was chosen: a persona that
+      // turns "press Create" into "type -1 first" is not going in circles.
+      history.push(`${r.action.op}:${r.action.target?.name ?? ''}`)
+      if (history.length > 9) history.shift()
+      if (history.length >= 6 && [1, 2, 3].some((period) => history.length >= period * 3 && history.slice(-period * 3).every((h, i, arr) => h === arr[i % period]))) {
+        out.reason = 'stuck'
+        out.result = `going in circles on ${snap.path}`
+        return out
+      }
     }
     remember(did)
     live.worker(opts.worker, opts.mode === 'mission' ? 'crew' : 'explorer', { state: 'acting', did })
@@ -425,6 +444,28 @@ async function missionAct(
 
   // CLICK
   const submitLike = c.role === 'button' && /save|create|submit|send|add|record|book|pay|confirm|raise|place|update|apply/i.test(c.name)
+  // The extremist never got to put 0 in the quantity box: the box already
+  // said 1, so the driver left it alone and pressed Create. A persona with
+  // bad numbers in its pockets empties them into one untouched number field
+  // before the submit is allowed — one field per submit, then the click.
+  const numeric = st.classes.some((k) => k === 'zero' || k === 'negative' || k === 'huge' || k === 'fraction')
+  if (submitLike && numeric) {
+    const box = snap.controls.find((x) =>
+      isEditable(x) && !(x.name in st.entered) && !((x.placeholder || x.ref) in st.entered) &&
+      (x.type === 'number' || ['money', 'quantity'].includes(d.fieldKinds[x.ref] ?? '') || /\b(qty|quantity|amount|price|total|count|units?)\b/i.test(x.name))
+    )
+    if (box) {
+      const kind = d.fieldKinds[box.ref] ?? (/amount|price|total/i.test(box.name) ? 'money' : 'quantity')
+      const cls = st.classes[classIdx % st.classes.length]!
+      classIdx++
+      const text = valueForKind(kind, cls, box.name)
+      st.usedClasses.push(cls)
+      const r = await s.type(box.ref, text)
+      st.entered[box.name || box.placeholder || box.ref] = text
+      const boxTarget = { role: box.role, name: box.name }
+      return { action: { op: 'type', target: boxTarget, text, url_before: snap.path }, note: `${r.note} (${kind}, ${cls}, before pressing "${c.name}")`, classIdx, skippedRequired, wentBack }
+    }
+  }
   if (submitLike && st.hooks.dawdleMs) await sleep(st.hooks.dawdleMs)
   if (submitLike && st.hooks.backAndForward && !wentBack && Object.keys(st.entered).length) {
     wentBack = true
@@ -461,6 +502,12 @@ async function missionAct(
 }
 
 const DOORWAY_PATH = /\/(login|signin|sign-in|register|signup|sign-up)\b/i
+
+/** An empty list: a table with no rows, or the app saying so in words. Code, not Jev — counting is ours. */
+function looksEmpty(snap: Snapshot): boolean {
+  if (snap.tables.length && snap.tables.every((t) => t.count === 0)) return true
+  return /\b(no|nothing) (\w+ ){0,2}(yet|found|here|to show)\b|\bnothing here\b|\bis empty\b|\bno results\b/i.test(snap.visibleText)
+}
 
 function isPublic(ctx: Ctx, snap: Snapshot): boolean {
   const page = map.pageByFp(ctx.db, snap.fp)

@@ -75,6 +75,36 @@ Shallow screens first, so the thing an invoice depends on is made before the
 invoice. Missions run in a fresh account by default; some deliberately in a
 cluttered one.
 
+**Chains.** A form on `/app/invoices/:id` needs an invoice to exist, and in a
+fresh account none does. So the mission is two links walked in one account:
+*create an order*, then *open an invoice and set its status*. The
+prerequisite is read off the map — the create form for the same noun if there
+is one, else the create form for a noun whose record page links into this one
+(an order's page links to invoices, because making the order made one). A
+navigation bar on every screen makes that inference ambiguous, so it is a
+guess that gets corrected: a crew that ends on an empty list is queued again
+with the next untried prerequisite in front. Links before the last are walked
+plainly; the persona misbehaves on the last one only.
+
+**One form, one mission per persona that changes it.** The same create form is
+a different test with a number below zero in it, with a required field left
+empty, with the button pressed twice — so form missions are written once for
+each of those personas rather than once for whoever is next. A persona with
+bad numbers in its pockets empties one into an untouched number field before
+every submit: the extremist never used to reach the quantity box, because it
+already said 1.
+
+**A button with no fields is still a mission.** "Mark all as read" is a thing
+the app can be told to do and a screen to read afterwards.
+
+**A form without a `<form>`.** A single-page app draws three inputs in a
+dialog and a button called "Add customer". The snapshot groups loose fields
+by their nearest container and pairs them with the submit-like button that
+follows them; a label ending in `*` marks its field required. When a modal
+is in front, the snapshot reads only what is inside it — what is behind
+cannot be clicked, and reading it made a three-field dialog look like the
+whole page with three extra fields.
+
 ## What we do not do
 
 **No model in the checks.** Nothing in `watch/` calls anything.

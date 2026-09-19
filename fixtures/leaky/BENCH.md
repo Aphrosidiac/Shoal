@@ -523,6 +523,50 @@ screen now, and it counts as 14 of 22 with none.
 Model calls per action stopped meaning "is the map a cache" — every step is
 one request by design — and now means what a step costs: about $0.0001.
 
+### The depth runs (2026-09-19)
+
+The three rebuild runs all found 14 of 22, and the misses were the same
+four screen bugs every time: the ones behind a chain (make an order, open its
+invoice, set its status) or behind a refused value (0 in the quantity box).
+Judgment was not the problem — the scripted judge already caught all ten —
+the swarm never stood on those screens. So this round is about standing
+there: missions are chains with a map-derived prerequisite in front, a form
+mission runs once per persona that changes the form, a persona with bad
+numbers puts one in an untouched number field before it may submit, a
+field-less button is a mission, a single-page app's dialog is a form and a
+modal in front is the screen.
+
+Three ten-minute runs, 16 of 22 twice, no false positive in the last. Read
+them together: every screen bug but #16 was found in at least one, and
+which ones a given run reaches is the ten-minute lottery — #12 and #17 were
+found in the first two and not the third. What each run corrected:
+
+- *Depth 1 → 2*: the invoice contradiction was reached and filed one step
+  early, at the dropdown, with a trail that ended before the button; the
+  rewalk of that trail saw nothing, and the real one after the click was
+  deduplicated away. State checks now skip type and select steps, and an
+  unreproduced suspicion is refiled once from a longer trail. The extremist
+  never touched the quantity box because it already said 1.
+- *Depth 2 → 3*: the loop's "going in circles" guard fired on the persona's
+  own detour (press Create → type -1 first → press Create) and ended the
+  mission before the submit; it judges what was done now, not what was
+  chosen. The fresh-account rewalk stood on the recorded address
+  (/app/invoices/5048, another account's invoice) instead of the same place
+  by pattern, and judged "no such invoice". The one false positive was a
+  second identical booking whose new row fell below the first 600 characters
+  of text; the change marker counts table rows now.
+- After run 3, offline: a label fallback that named every submit button after
+  the field label before it (run 3 drove with misnamed buttons and still
+  scored; fixed and re-probed, 10 of 10); `screen.lost_input` no longer needs
+  every field wiped when one resets to a default equal to what was typed,
+  which is why #16 was never seen; and a new code check, `screen.orphan_label`,
+  found in ANK Ops that every dropdown in a dialog has a label pointing at
+  nothing.
+
+Spend for the round: $0.38 over four runs. The Jev allowance for the day is
+close to used, so the next measurement is the long one, not another ten
+minutes.
+
 ## 2026-09-18 18:03 — jev rebuild, first swarm run
 
 ```
@@ -570,3 +614,70 @@ FALSE POSITIVES — each one of these fails the gate:
 ```
 
 pages 30, endpoints 52, accounts 45, requests 6047, actions 396
+
+## 2026-09-19 08:01 — chains: implicit forms, prerequisite links
+
+```
+found            11 of 22
+missed           #5 (wrong.readback), #7 (wrong.consistency), #9 (auth.role), #10 (slow), #13 (screen.false_success), #15 (screen.contradiction), #16 (screen.lost_input), #17 (screen.wrong_destination), #19 (screen.wrong_validation), #20 (screen.loading_stuck), #21 (screen.logged_out)
+false positives  0
+wall clock       4m 9s
+model calls      301        (1.09 per action)
+spend            $0.05
+```
+
+pages 24, endpoints 45, accounts 36, requests 3229, actions 276
+
+## 2026-09-19 08:05 — chains: implicit forms, prerequisite links
+
+```
+found            9 of 22
+missed           #1 (race.lostupdate), #2 (money.overpaid), #3 (leak.crossaccount), #5 (wrong.readback), #7 (wrong.consistency), #9 (auth.role), #13 (screen.false_success), #15 (screen.contradiction), #16 (screen.lost_input), #17 (screen.wrong_destination), #19 (screen.wrong_validation), #20 (screen.loading_stuck), #21 (screen.logged_out)
+false positives  0
+wall clock       4m 25s
+model calls      295        (1.12 per action)
+spend            $0.05
+```
+
+pages 30, endpoints 48, accounts 27, requests 5495, actions 264
+
+## 2026-09-19 08:18 — depth: implicit forms, modal scope, prerequisite chains, per-persona form missions
+
+```
+found            14 of 22
+missed           #3 (leak.crossaccount), #5 (wrong.readback), #7 (wrong.consistency), #10 (slow), #13 (screen.false_success), #15 (screen.contradiction), #16 (screen.lost_input), #19 (screen.wrong_validation)
+false positives  0
+wall clock       10m 5s
+model calls      528        (1.08 per action)
+spend            $0.10
+```
+
+pages 32, endpoints 52, accounts 70, requests 17731, actions 489
+
+## 2026-09-19 08:32 — depth 2: numbers before submit, press missions, form-only steps not judged for state, refile from a longer trail
+
+```
+found            16 of 22
+missed           #5 (wrong.readback), #7 (wrong.consistency), #10 (slow), #15 (screen.contradiction), #16 (screen.lost_input), #19 (screen.wrong_validation)
+false positives  1
+wall clock       10m 4s
+model calls      534        (0.51 per action)
+spend            $0.10
+FALSE POSITIVES — each one of these fails the gate:
+  screen.dead_control @ /app/deliveries — button "Book delivery" on /app/deliveries does nothing
+```
+
+pages 30, endpoints 53, accounts 76, requests 8336, actions 1057
+
+## 2026-09-19 08:44 — depth 3: circles judged on what was done, rewalk stands on the same place by pattern, marker counts rows
+
+```
+found            16 of 22
+missed           #3 (leak.crossaccount), #7 (wrong.consistency), #10 (slow), #12 (screen.dead_control), #16 (screen.lost_input), #17 (screen.wrong_destination)
+false positives  0
+wall clock       10m 3s
+model calls      681        (1.01 per action)
+spend            $0.13
+```
+
+pages 30, endpoints 53, accounts 76, requests 12650, actions 671

@@ -60,8 +60,8 @@ export async function runSwarm(cfg: Config, log: (k: string, m: string) => void)
   const topUp = setInterval(() => {
     if (ctx.stopping()) return
     const waiting = queue.frontierByKind(ctx.db).mission ?? 0
-    if (waiting < 3) void writeMissions(ctx).catch(() => undefined)
-  }, 5 * 60_000)
+    if (waiting < 4) void writeMissions(ctx).catch(() => undefined)
+  }, 60_000)
   topUp.unref?.()
 
   const ui = cfg.ui.enabled

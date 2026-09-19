@@ -161,6 +161,24 @@ text exactly as stored. It is bug #22 now, with its own check, and it stays.
 and the thing that puts data in the app; at base 70 × unexplored-share they
 never ran in eight minutes. Base 130, lean 1.
 
+**Depth was the bottleneck, not judgment.** Ten minutes of swarm found
+14 of 22 and the misses all sat behind a chain — make an order, open its
+invoice, set its status; fill the form with a refused number. Missions were
+one link long and ran once each with whoever was next. Now a form on a
+record's page is a chain with its prerequisite in front, read off the map
+and corrected at runtime when the guess lands on an empty list; a form
+mission is written once per persona that changes what happens at the form;
+and a persona with bad numbers puts one in an untouched number field before
+it is allowed to submit. A SPA's dialog is a form now, and a modal in front
+is the screen.
+
+**A half-filled form is not a contradiction.** PAID chosen in a dropdown
+beside a line that says OPEN filed the contradiction one step early, with a
+trail that ended before the button — and the rewalk of that trail, correctly,
+saw nothing. The real one after the click was then deduplicated away by its
+own fingerprint. State checks are skipped on type and select steps, and an
+unreproduced suspicion may be filed once more from a longer trail.
+
 **A single-page app keeps its session where the cookie jar cannot see.**
 Pointed at ANK Ops (a Vue SPA with a bearer token in localStorage and no
 sign-up), four things were wrong at once and each was a cookie assumption:
