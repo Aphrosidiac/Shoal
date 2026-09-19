@@ -20,6 +20,7 @@ export class Vault {
   }
 
   private saidNoSignup = false
+  private saidRateLimit = false
 
   /**
    * A brand new account, for a mission that wants an empty world. On an app
@@ -39,6 +40,13 @@ export class Vault {
         return this.given(s, handed)
       }
       this.ctx.log('signup', r.error)
+      if (/too many|rate|try again later|limit/i.test(r.error)) {
+        if (!this.saidRateLimit) {
+          this.saidRateLimit = true
+          this.ctx.log('signup', 'the app rate-limits sign-ups, and a swarm signs up a lot. Reusing accounts it already has — a "fresh" world is a used one from here on. Hand it an account with --login, or raise the limit for dev.')
+        }
+        return this.reuse(s)
+      }
       return null
     }
     this.busy.add(r.account.id)

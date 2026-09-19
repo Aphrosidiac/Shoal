@@ -5,7 +5,7 @@ import * as recordings from '../store/repo/recordings.js'
 import * as map from '../store/repo/map.js'
 import type { Recording } from '../store/repo/recordings.js'
 import { firstObject, idOf, parse, rowsOf } from '../watch/types.js'
-import { unescapeJson } from '../watch/faults.js'
+import { unescapeJson, looksLikeBreakage, errorText } from '../watch/faults.js'
 
 /**
  * How each check reproduces itself, at HTTP speed, with no model anywhere. A
@@ -97,7 +97,8 @@ export async function faultAttempt(
       return { verdict: res.status >= 500 ? 'reproduced' : 'clean', steps: s, recordingIds: ids }
     case 'fault.stack': {
       const text = unescapeJson(res.body)
-      const hit = STACK.some((re) => re.test(text)) || SQL.test(text)
+      const page = /text\/html/i.test(String(res.headers['content-type'] ?? '')) || /^\s*<!doctype html|^\s*<html/i.test(text)
+      const hit = page && res.status < 500 ? false : STACK.some((re) => re.test(text)) || (!page && SQL.test(text))
       return {
         verdict: hit ? 'reproduced' : 'clean',
         steps: s,
@@ -106,7 +107,8 @@ export async function faultAttempt(
       }
     }
     case 'fault.error-in-200': {
-      const hit = res.status >= 200 && res.status < 300 && ERROR_IN_200.test(res.body)
+      const page = /text\/html/i.test(String(res.headers['content-type'] ?? '')) || /^\s*<!doctype html|^\s*<html/i.test(res.body)
+      const hit = !page && /json/i.test(String(res.headers['content-type'] ?? '')) && res.status >= 200 && res.status < 300 && ERROR_IN_200.test(res.body) && looksLikeBreakage(errorText(res.body))
       return { verdict: hit ? 'reproduced' : 'clean', steps: s, recordingIds: ids }
     }
     case 'slow': {

@@ -14,8 +14,27 @@ const SETTLE = 1200
  * then is the screen from before the click. The judge then reports every
  * form submit in the app as a control that does nothing.
  */
+const inflight = new WeakMap<Page, number>()
+
+/**
+ * Count what the page has in flight. `networkidle` gives up after 1.2s, and
+ * a dev server compiling a route, or a client-side navigation fetching its
+ * data, takes longer than that — so a snapshot taken then is the old page,
+ * and the click that caused it is filed as "a control that does nothing".
+ * A page with a request in flight is not settled, for up to eight seconds.
+ */
+export function watch(page: Page): void {
+  inflight.set(page, 0)
+  page.on('request', (r) => { if (!/^(websocket|eventsource)$/.test(r.resourceType())) inflight.set(page, (inflight.get(page) ?? 0) + 1) })
+  const done = () => inflight.set(page, Math.max(0, (inflight.get(page) ?? 1) - 1))
+  page.on('requestfinished', done)
+  page.on('requestfailed', done)
+  page.on('framenavigated', (f) => { if (f === page.mainFrame()) inflight.set(page, 0) })
+}
+
 export async function settle(page: Page): Promise<void> {
   await page.waitForTimeout(150)
+  for (let i = 0; i < 80 && (inflight.get(page) ?? 0) > 0; i++) await page.waitForTimeout(100)
   try {
     await page.waitForLoadState('networkidle', { timeout: SETTLE })
   } catch {
@@ -51,6 +70,7 @@ export async function click(page: Page, snap: Snapshot, ref: string): Promise<Ac
   const c = find(snap, ref)
   if (!c) return { ok: false, note: `there is no ${ref} on this page` }
   if (c.disabled) return { ok: false, note: `${ref} "${c.name}" is disabled` }
+  const before = page.url()
   try {
     await page.locator(c.selector).first().click({ timeout: 5000 })
   } catch (e) {
@@ -68,6 +88,19 @@ export async function click(page: Page, snap: Snapshot, ref: string): Promise<Ac
       }
     }
     return { ok: false, note: `could not click ${ref} "${c.name}": ${short(e)}` }
+  }
+  // A link to somewhere else: give the app up to eight seconds to get there
+  // before deciding it did not.
+  if (c.role === 'link' && c.href && !c.href.startsWith('#') && !/^(mailto|tel|javascript):/.test(c.href)) {
+    let target: string | null = null
+    try {
+      target = new URL(c.href, before).pathname
+    } catch {
+      target = null
+    }
+    if (target && target !== new URL(before).pathname) {
+      await page.waitForURL((u) => u.href !== before, { timeout: 8000 }).catch(() => undefined)
+    }
   }
   await settle(page)
   return { ok: true, note: `clicked ${c.role} "${c.name}"` }

@@ -174,6 +174,8 @@ export function judge(ctx: Ctx, worker: string, ev: StepEvidence, opts: { dry?: 
   for (const [name, entered] of Object.entries(s.entered)) {
     const shown = asNoul(a[`shows.${name}`])
     if (!wrote || shown < SUSPECT || !entered.trim() || pOk < 0.5) continue
+    // A search box echoes its query back trimmed, quoted or not at all; that is not a dropped write.
+    if (/search|query|find|filter|\bq\b/i.test(name)) continue
     if (contains(after.visibleText, entered)) continue
     // The value came back with its tags eaten: the app put what was typed
     // into the page as HTML. That is not a dropped value, it is an injection.

@@ -1,5 +1,6 @@
 import type { Ctx } from '../ctx.js'
 import type { Observed } from '../browser/record.js'
+import { isJsonish } from './types.js'
 import type { Signal } from './types.js'
 
 /**
@@ -20,6 +21,20 @@ const SQL = /\b(?:SQLITE_|SQLSTATE|ORA-\d{5}|PG::|near "\w+": syntax error|You h
 
 const ERROR_IN_200 = /"(?:error|errors|exception|error_message|errorMessage)"\s*:\s*(?!null|false|""|\[\]|\{\})/
 
+const BREAKAGE = /internal|exception|unexpected|unhandled|something went wrong|failed to|timed? ?out|ECONN|ENOTFOUND|EAI_AGAIN|undefined|null|NaN|cannot read|is not a function|stack|500|503|database|prisma|sql|syntax/i
+const VALIDATION = /please|must|need|should|required|invalid|already|taken|too (many|short|long|large|small)|at least|at most|try again|not (found|allowed|permitted|available)|incorrect|wrong|expired|does not|doesn't|can(?:no|')t be|enter a|choose|select|missing/i
+
+export function errorText(body: string): string {
+  const m = /"(?:error|errors|exception|error_message|errorMessage)"\s*:\s*("(?:[^"\\]|\\.)*"|\[[^\]]*\]|\{[^}]*\})/.exec(body)
+  return m ? m[1]!.slice(0, 300) : ''
+}
+
+export function looksLikeBreakage(text: string): boolean {
+  if (!text || /^"\$/.test(text)) return false
+  if (VALIDATION.test(text) && !/internal|exception|unhandled|stack|ECONN|prisma|sql/i.test(text)) return false
+  return BREAKAGE.test(text)
+}
+
 export function faults(ctx: Ctx, o: Observed): Signal[] {
   const out: Signal[] = []
   // A stack trace inside a JSON body has \n as two characters, not a newline,
@@ -27,6 +42,10 @@ export function faults(ctx: Ctx, o: Observed): Signal[] {
   // is: an error handler that serialises err.stack.
   const body = unescapeJson(o.resBody ?? '')
   const where = `${o.method} ${o.pattern}`
+  // An HTML document that answered 200 is a page, and a page's scripts
+  // contain every word a stack trace does. The stack and error-in-a-200
+  // checks read JSON and text; a page is only read when it is a 5xx.
+  const html = /text\/html/i.test(String(o.resHeaders['content-type'] ?? '')) || /^\s*<!doctype html|^\s*<html/i.test(body)
 
   if (o.status >= 500) {
     out.push({
@@ -44,8 +63,8 @@ export function faults(ctx: Ctx, o: Observed): Signal[] {
     })
   }
 
-  const stack = STACK.find((re) => re.test(body))
-  if (stack || SQL.test(body)) {
+  const stack = html && o.status < 500 ? undefined : STACK.find((re) => re.test(body))
+  if (stack || (!html && SQL.test(body))) {
     out.push({
       check: 'fault.stack',
       kind: 'fault',
@@ -61,7 +80,13 @@ export function faults(ctx: Ctx, o: Observed): Signal[] {
     })
   }
 
-  if (o.status >= 200 && o.status < 300 && ERROR_IN_200.test(body)) {
+  // A 200 whose body says `error` is the app's own validation channel as
+  // often as it is a hidden failure — a Server Action answers "Please enter
+  // your name." with a 200 and nothing is broken. Only what reads like the
+  // system giving up is a fault; a polite sentence to the user is not.
+  // JSON only. A React Flight payload (text/x-component) serialises an absent
+  // error as "$undefined", which is the opposite of one.
+  if (!html && isJsonish(o.resHeaders) && o.status >= 200 && o.status < 300 && ERROR_IN_200.test(body) && looksLikeBreakage(errorText(body))) {
     out.push({
       check: 'fault.error-in-200',
       kind: 'fault',

@@ -27,11 +27,29 @@ export class Session {
 
   constructor(private ctx: Ctx, private pool: BrowserPool, readonly worker: string) {}
 
+  /** A document request is in flight for the main frame: the page is about to be replaced. */
+  private navPending = false
+
   async start(): Promise<void> {
     this.context = await this.pool.context()
     this.recorder = new Recorder(this.ctx, this.worker)
     this.recorder.attach(this.context)
     this.page = await this.context.newPage()
+    act.watch(this.page)
+    // A dev server compiles a route on its first hit and answers seconds
+    // later; a snapshot taken in between is the old page, and the click that
+    // caused it is then "a control that does nothing". So a look() waits for
+    // a navigation that has started to finish, within reason.
+    const main = () => this.page.mainFrame()
+    this.page.on('request', (r) => {
+      if (r.isNavigationRequest() && r.frame() === main()) this.navPending = true
+    })
+    const done = (r: { isNavigationRequest: () => boolean; frame: () => unknown }) => {
+      if (r.isNavigationRequest() && r.frame() === main()) this.navPending = false
+    }
+    this.page.on('requestfinished', done)
+    this.page.on('requestfailed', done)
+    this.page.on('load', () => (this.navPending = false))
   }
 
   async stop(): Promise<void> {
@@ -53,6 +71,7 @@ export class Session {
   /** Look. Also the only place the map learns a screen exists. */
   async look(): Promise<Snapshot> {
     await this.ctx.throttle.take()
+    for (let i = 0; i < 150 && this.navPending; i++) await new Promise((r) => setTimeout(r, 100))
     // Wait for the app to finish drawing itself. A client-rendered list arrives
     // after the document does, so looking too early gives a screen with no
     // table in it — and then a screen with one — and the two fingerprint

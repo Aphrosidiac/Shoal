@@ -23,6 +23,8 @@ export type Case = {
   attempts?: number
   /** Every attempt must reproduce. For a judgment, one hit in two is a coin toss, not a bug. */
   requireAll?: boolean
+  /** At least this many must reproduce. A dev server's first-hit compile is one slow answer in five, by nature. */
+  minReproduced?: number
   fingerprint: string
   /** For a screen finding: the URL pattern it was seen on. Endpoint findings leave it out. */
   screen?: string
@@ -79,6 +81,10 @@ export async function decide(ctx: Ctx, c: Case): Promise<findings.Finding | null
     return null
   }
   if (!reproduced || !best) return null
+  if (c.minReproduced && reproduced < c.minReproduced) {
+    ctx.log('confirm', `${c.check} on ${c.title}: reproduced ${reproduced} of ${ran}, and it takes ${c.minReproduced}`)
+    return null
+  }
   if (c.requireAll && reproduced < ran) {
     ctx.log('confirm', `${c.check} on ${c.title}: reproduced ${reproduced} of ${ran}, and a judgment has to hold every time`)
     return null

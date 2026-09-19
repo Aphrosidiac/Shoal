@@ -112,6 +112,7 @@ async function confirmSuspicion(ctx: Ctx, rp: Replayer, id: number, browser?: Br
     detail,
     endpointId: rec.endpoint_id,
     fingerprint: (note.fp as string) ?? findingFp(label, check, shape),
+    ...(check === 'slow' ? { minReproduced: 3 } : {}),
     attempt,
   })
   suspicions.setState(ctx.db, id, f ? 'confirmed' : 'unreproduced')

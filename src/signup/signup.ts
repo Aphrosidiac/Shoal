@@ -19,9 +19,18 @@ const SUBMIT = /sign ?up|register|create|continue|next|submit|get started|join/i
 export async function signUp(
   ctx: Ctx,
   s: Session,
-  opts: { path?: string | null } = {}
+  opts: { path?: string | null; safer?: boolean } = {}
 ): Promise<{ account: Account; verified: boolean } | { error: string }> {
-  const who = identity()
+  const who = identity({ safer: opts.safer ?? false })
+
+  // Signup is the reset, and it needs a browser that is signed out: an app
+  // sends a signed-in browser away from /signup to the dashboard, and the
+  // form is then "not found" for the wrong reason.
+  if (await carriesSession(s)) {
+    await s.context.clearCookies().catch(() => undefined)
+    await s.page.evaluate('(() => { try { localStorage.clear(); sessionStorage.clear() } catch (e) {} })()').catch(() => undefined)
+    s.use(null)
+  }
 
   const start = opts.path ?? (await findSignupPath(ctx, s))
   if (start) await s.goto(start)
@@ -62,6 +71,20 @@ export async function signUp(
     const next = more.controls.find((c) => c.role === 'button' && SUBMIT.test(c.name))
     if (!next) break
     await s.click(next.ref)
+  }
+
+  // Still on the form with something to say: the app refused it. Read what
+  // it said — that is the one thing a person would do — and try once more
+  // with an identity that nothing objects to. A username with dots in it
+  // was the first thing a real app refused.
+  const after = s.last!
+  if (hasSignupShape(after) && !(await signedIn(s))) {
+    const said = after.messages.find((m) => m.trim()) ?? ''
+    if (!opts.safer) {
+      ctx.log('signup', `the app refused the sign-up form${said ? `: "${said.slice(0, 120)}"` : ''}; trying once more with a plainer identity`)
+      return signUp(ctx, s, { path: opts.path ?? null, safer: true })
+    }
+    return { error: `the sign-up form at ${after.path} refused both identities${said ? `: "${said.slice(0, 120)}"` : ''}` }
   }
 
   const account = accounts.create(ctx.db, {

@@ -182,3 +182,33 @@ once more, and a click that still failed is recorded as failed and judged as
 nothing. A link to the screen already showing, and the brand link, are not
 wrong destinations either.
 
+**A Next.js app in development taught the recorder what "settled" means.**
+`networkidle` gives up after 1.2 s, and a dev server compiling a route on its
+first hit, or a client-side navigation fetching its data, takes longer — so
+every snapshot was the old page and every link was "a control that does
+nothing", confirmed on rewalk because the rewalk was equally early. The page
+now counts its own requests in flight and is not settled while any is; a
+link to somewhere else gets eight seconds to arrive; a document request in
+flight holds the next look. All three are code, and all three are the same
+lesson as the first settle bug: the browser is asynchronous and the judge
+is not.
+
+**A 200 with `"error"` in it is only a fault when it is JSON and reads like
+breakage.** A Server Action answers "Please enter your name." with a 200,
+and a React Flight payload serialises an absent error as `"$undefined"`;
+both were findings, thirteen of them on one blog. The check now reads the
+error's text — a polite sentence to the user is not the system giving up —
+and reads only JSON, never a page or a Flight stream.
+
+**The swarm signs up more than an app allows.** A sign-up rate limit of five
+an hour is a sensible thing for a blog to have and the sixth explorer met it.
+Shoal reads the refusal aloud, says once what it means, and reuses the
+accounts it has — a "fresh" world becomes a used one, and the log says so.
+It also signs *out* before signing up: an app sends a signed-in browser away
+from /signup, and the form was "not found" for the wrong reason.
+
+**A username with dots in it.** The first real sign-up form refused
+`ken.hamilton.5d49ff`; usernames are the pickiest field there is. The handle
+is letters, digits and an underscore now, and the retry after a refusal is
+plainer still.
+

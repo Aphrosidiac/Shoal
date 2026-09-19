@@ -21,14 +21,18 @@ const pick = <T>(a: T[]): T => a[Math.floor(Math.random() * a.length)]!
  * `shoal.test`, which is reserved and therefore cannot reach anybody by
  * accident even if the app under test somehow got real mail out.
  */
-export function identity(): Identity {
+export function identity(opts: { safer?: boolean } = {}): Identity {
   const first = pick(FIRST)
   const last = pick(LAST)
   const tag = randomBytes(3).toString('hex')
-  const handle = `${first}.${last}.${tag}`
+  // A username is the field apps are pickiest about: lowercase, letters and
+  // digits, an underscore at most, under twenty-four characters. The email
+  // keeps the dots. `safer` is the retry after an app refused the first try:
+  // nothing but letters and digits, a shorter handle, a longer plain password.
+  const handle = opts.safer ? `${first}${tag}` : `${first}_${last}_${tag}`.slice(0, 24)
   return {
-    email: `${handle}@shoal.test`,
-    password: `Shoal-${randomBytes(6).toString('base64url')}!7`,
+    email: `${first}.${last}.${tag}@shoal.test`,
+    password: opts.safer ? `Shoal${randomBytes(8).toString('hex')}9` : `Shoal-${randomBytes(6).toString('base64url')}!7`,
     first,
     last,
     name: `${first[0]!.toUpperCase()}${first.slice(1)} ${last[0]!.toUpperCase()}${last.slice(1)}`,

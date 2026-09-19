@@ -120,7 +120,9 @@ export function nounOf(pattern: string): string | null {
   const parts = pattern.split('/').filter((x) => x && !x.startsWith(':') && !/^(app|admin|dashboard|new|edit|create)$/i.test(x))
   const last = parts[parts.length - 1]
   if (!last) return null
-  if (/^(login|signup|register|logout|help|profile|settings|notifications|reports?|search|contact|about|pricing|terms|privacy)$/i.test(last)) return null
+  // A profile handle, a slug with a hash in it, a number: an address, not a noun.
+  if (/^@|\d{3,}|^[a-f0-9]{8,}$|^me$/i.test(last)) return null
+  if (/^(log-?in|sign-?in|sign-?up|register|log-?out|sign-?out|verify|reset|forgot|help|profile|settings|notifications|reports?|search|contact|about|pricing|terms|privacy|membership)$/i.test(last)) return null
   return last.replace(/ies$/, 'y').replace(/s$/, '').replace(/[-_]/g, ' ')
 }
 
