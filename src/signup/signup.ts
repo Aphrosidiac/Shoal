@@ -115,7 +115,18 @@ export async function signUp(
 function hasSignupShape(s: Snapshot): boolean {
   const hasPassword = s.controls.some((c) => c.type === 'password')
   const hasEmail = s.controls.some((c) => c.type === 'email' || /e-?mail/i.test(c.name))
-  return hasPassword && (hasEmail || s.controls.filter((c) => c.role === 'textbox').length >= 2)
+  if (!hasPassword || !(hasEmail || s.controls.filter((c) => c.role === 'textbox').length >= 2)) return false
+  // Email, password and a button that says Sign In is the login form, and a
+  // single-page app sends /register there when it has no such route. A
+  // sign-up form has more to say: a name, a confirmation, or a button that
+  // says so.
+  const buttons = s.controls.filter((c) => c.role === 'button')
+  const saysLogin = buttons.some((c) => /^\s*(log ?in|sign ?in)\s*$/i.test(c.name))
+  const saysSignup = buttons.some((c) => /sign ?up|register|create|get started|join/i.test(c.name))
+  const otherFields = s.controls.filter((c) => c.role === 'textbox' && c.type !== 'password' && c.type !== 'email' && !/e-?mail/i.test(c.name)).length
+  const passwords = s.controls.filter((c) => c.type === 'password').length
+  if (saysLogin && !saysSignup && otherFields === 0 && passwords === 1) return false
+  return true
 }
 
 async function fillIdentity(s: Session, snap: Snapshot, who: Identity): Promise<boolean> {
@@ -193,11 +204,18 @@ export async function signedIn(s: Session): Promise<boolean> {
 }
 
 export async function logIn(ctx: Ctx, s: Session, a: Account): Promise<boolean> {
+  const why = await logInOrWhy(ctx, s, a)
+  if (why) ctx.log('signup', `sign-in as ${a.email} failed: ${why}`)
+  return why === null
+}
+
+/** Null on success; otherwise the reason, in words a person can act on. */
+async function logInOrWhy(ctx: Ctx, s: Session, a: Account): Promise<string | null> {
   // Already in as this person — a mission reusing the handed-over account in
   // a browser that never signed out. A single-page app answers /login with
   // the dashboard in that state, so asking for the form would fail for the
   // wrong reason. Somebody else's session gets cleared first.
-  if (s.account?.id === a.id && (await carriesSession(s)) && (await signedIn(s))) return true
+  if (s.account?.id === a.id && (await carriesSession(s)) && (await signedIn(s))) return null
   if (s.account && s.account.id !== a.id) {
     await s.context.clearCookies().catch(() => undefined)
     await s.page.evaluate('(() => { try { localStorage.clear(); sessionStorage.clear() } catch (e) {} })()').catch(() => undefined)
@@ -207,21 +225,25 @@ export async function logIn(ctx: Ctx, s: Session, a: Account): Promise<boolean> 
   let snap = s.last!
   if (!snap.controls.some((c) => c.type === 'password')) {
     const link = snap.controls.find((c) => c.role === 'link' && LOGIN_LINK.test(c.name))
-    if (!link) return false
+    if (!link) return `no password field and no sign-in link at ${snap.path}`
     await s.click(link.ref)
     snap = s.last!
   }
   const email = snap.controls.find((c) => c.type === 'email' || /e-?mail|user/i.test(c.name))
   const pass = snap.controls.find((c) => c.type === 'password')
-  if (!email || !pass) return false
-  await s.type(email.ref, a.email)
-  await s.type(pass.ref, a.password)
+  if (!email || !pass) return `the form at ${snap.path} has ${email ? 'no password' : 'no email or username'} field`
+  const t1 = await s.type(email.ref, a.email)
+  const t2 = await s.type(pass.ref, a.password)
+  if (!t1.ok || !t2.ok) return `could not type into the form at ${snap.path}: ${(t1.ok ? t2 : t1).note}`
   await s.look()
   const button = s.last!.controls.find((c) => c.role === 'button' && LOGIN_LINK.test(c.name)) ??
     s.last!.controls.find((c) => c.role === 'button')
-  if (!button) return false
-  await s.click(button.ref)
-  return signedIn(s)
+  if (!button) return `no sign-in button at ${snap.path}`
+  const clicked = await s.click(button.ref)
+  if (!clicked.ok) return clicked.note
+  if (await signedIn(s)) return null
+  const said = s.last?.messages.find((m) => m.trim())
+  return `still at ${s.last?.path ?? s.page.url()} after pressing "${button.name}"${said ? ` — the app said "${said.slice(0, 100)}"` : ''}`
 }
 
 async function followVerification(ctx: Ctx, s: Session, who: Identity): Promise<boolean> {

@@ -35,7 +35,7 @@ export async function doctor(cfg: Config): Promise<number> {
   )
   if (!p.up) fail = true
 
-  if (p.signupPath) lines.push(ok('signup', `found at ${p.signupPath}   email + password, no OAuth wall`))
+  if (p.signupPath) lines.push(ok('signup', `${p.rendering === 'client' ? 'probably' : 'found'} at ${p.signupPath}${p.rendering === 'client' ? '   (a client-rendered app answers every path; the run checks for a real form)' : '   email + password, no OAuth wall'}`))
   else if (cfg.logins.length) lines.push(ok('signup', `none — using the ${cfg.logins.length} sign-in${cfg.logins.length === 1 ? '' : 's'} you gave (${cfg.logins.map((l) => l.email).join(', ')})${p.loginPath ? `, login at ${p.loginPath}` : ''}`))
   else {
     lines.push(bad('signup', 'no signup form found, and no sign-in given. Hand it one with --login email:password (or in the dashboard) and it will use that account.'))

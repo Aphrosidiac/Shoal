@@ -27,12 +27,17 @@ export class Vault {
    * with no sign-up there is no such thing: the account the user handed over
    * is used instead, said once, and a "fresh" world is that account as it is.
    */
+  private signupDead = false
+
   async fresh(s: Session): Promise<Account | null> {
     const handed = accounts.givenOnes(this.ctx.db)
-    if (handed.length && this.signupPath === null) return this.given(s, handed)
+    if (handed.length && (this.signupPath === null || this.signupDead)) return this.given(s, handed)
     const r = await signUp(this.ctx, s, { path: this.signupPath ?? null })
     if ('error' in r) {
       if (handed.length) {
+        // Once is enough. A sign-up that fails with an account in hand is
+        // not worth trying again every mission.
+        this.signupDead = true
         if (!this.saidNoSignup) {
           this.saidNoSignup = true
           this.ctx.log('signup', `no sign-up here (${r.error.split('.')[0]}); using the account you gave. Missions and rewalks share it, so a rewalk is the same account walked again.`)
@@ -82,7 +87,7 @@ export class Vault {
         this.uses.set(a.id, (this.uses.get(a.id) ?? 0) + 1)
         return a
       }
-      this.ctx.log('signup', `could not sign in as ${a.email} — check the password, and that the login form takes an email and a password`)
+      /* the reason is already in the log */
     }
     s.use(null)
     return null
